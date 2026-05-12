@@ -73,12 +73,31 @@ async def find_recent_outputs(prefix: str, ext: str, since_timestamp: float) -> 
                 continue
     return found
 
+# Map workflow node IDs to human-readable stage descriptions
+NODE_STAGES = {
+    "14": "loading image",
+    "58": "removing background",
+    "37": "generating mesh (diffusion sampling)",
+    "4":  "loading VAE",
+    "9":  "decoding mesh (volume decoding)",
+    "43": "post-processing mesh (removing floaters, smoothing)",
+    "44": "exporting untextured model",
+    "45": "UV unwrapping mesh",
+    "19": "configuring camera views",
+    "20": "generating textures (multi-view)",
+    "21": "baking textures",
+    "49": "inpainting texture gaps",
+    "55": "saving texture image",
+    "30": "configuring parameters",
+}
+
 async def listen_progress(prompt_id: str, on_progress, timeout: float = 600):
     """Listen to WebSocket for progress updates on a specific prompt.
     on_progress(stage, step, total_steps) is called on each update.
     Returns when the prompt completes or fails.
     Raises RuntimeError on execution error or timeout (default 10 min)."""
     ws_url = f"ws://{COMFYUI_URL.replace('http://', '')}/ws?clientId={CLIENT_ID}"
+    current_stage = "starting"
     async with websockets.connect(ws_url) as ws:
         while True:
             raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
@@ -91,11 +110,14 @@ async def listen_progress(prompt_id: str, on_progress, timeout: float = 600):
             if msg_type == "progress" and data.get("prompt_id") == prompt_id:
                 step = data.get("value", 0)
                 total = data.get("max", 1)
-                await on_progress("generating 3d model", step, total)
+                await on_progress(current_stage, step, total)
 
             elif msg_type == "executing" and data.get("prompt_id") == prompt_id:
-                if data.get("node") is None:
+                node_id = data.get("node")
+                if node_id is None:
                     return
+                current_stage = NODE_STAGES.get(node_id, f"processing node {node_id}")
+                await on_progress(current_stage, 0, 0)
 
             elif msg_type == "execution_error" and data.get("prompt_id") == prompt_id:
                 error_msg = data.get("exception_message", "unknown error")
