@@ -51,6 +51,28 @@ async def download_output(filename: str, subfolder: str = "", filetype: str = "o
         r.raise_for_status()
         return r.content
 
+async def find_recent_outputs(prefix: str, ext: str, since_timestamp: float) -> list[str]:
+    """List output files matching prefix+ext that were modified after since_timestamp.
+    Uses ComfyUI's /view endpoint to probe likely filenames."""
+    found = []
+    # Try the base name first (e.g., Textured.glb)
+    candidates = [f"{prefix}.{ext}"]
+    # Then try numbered suffixes (e.g., Untextured_00001_.glb up to _00010_)
+    for i in range(1, 11):
+        candidates.append(f"{prefix}_{i:05d}_.{ext}")
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        for fname in candidates:
+            try:
+                r = await client.head(
+                    f"{COMFYUI_URL}/view",
+                    params={"filename": fname, "type": "output"},
+                )
+                if r.status_code == 200:
+                    found.append(fname)
+            except Exception:
+                continue
+    return found
+
 async def listen_progress(prompt_id: str, on_progress, timeout: float = 600):
     """Listen to WebSocket for progress updates on a specific prompt.
     on_progress(stage, step, total_steps) is called on each update.

@@ -175,11 +175,7 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
 
         collected_files = []
 
-        # Collect all output files from history
-        # Node 49 (Hy3DInPaint) writes textured GLB via output_mesh_name
-        # Node 44 (Hy3D21ExportMesh) writes untextured GLB
-        # Node 55 (SaveImage) writes texture PNG
-        # Output keys vary by node type — scan all keys for GLB/PNG files
+        # 1) Collect files from history API (texture PNG from SaveImage)
         for node_id, node_output in outputs.items():
             for key, items in node_output.items():
                 if not isinstance(items, list):
@@ -189,18 +185,34 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
                         continue
                     fname = item["filename"]
                     subfolder = item.get("subfolder", "")
-                    if fname.endswith(".glb") and "Textured" in fname and "Untextured" not in fname:
-                        data = await comfyui.download_output(fname, subfolder)
-                        (job_dir / "textured.glb").write_bytes(data)
-                        collected_files.append("textured.glb")
-                    elif fname.endswith(".glb") and "Untextured" in fname:
-                        data = await comfyui.download_output(fname, subfolder)
-                        (job_dir / "untextured.glb").write_bytes(data)
-                        collected_files.append("untextured.glb")
-                    elif fname.endswith(".png") and "Texture" in fname:
+                    if fname.endswith(".png") and "Texture" in fname:
                         data = await comfyui.download_output(fname, subfolder)
                         (job_dir / "texture.png").write_bytes(data)
                         collected_files.append("texture.png")
+
+        # 2) GLB files are written directly to ComfyUI's output dir
+        #    by Hy3DInPaint (Textured.glb) and Hy3D21ExportMesh (Untextured_NNNNN_.glb)
+        #    They don't appear in the history API, so probe for them
+        if "textured.glb" not in collected_files:
+            try:
+                data = await comfyui.download_output("Textured.glb")
+                (job_dir / "textured.glb").write_bytes(data)
+                collected_files.append("textured.glb")
+            except Exception as e:
+                print(f"Warning: could not download Textured.glb: {e}")
+
+        if "untextured.glb" not in collected_files:
+            # Find the latest Untextured_NNNNN_.glb by probing numbered suffixes
+            candidates = await comfyui.find_recent_outputs("Untextured", "glb", 0)
+            if candidates:
+                # Use the last (highest numbered) one
+                latest = sorted(candidates)[-1]
+                try:
+                    data = await comfyui.download_output(latest)
+                    (job_dir / "untextured.glb").write_bytes(data)
+                    collected_files.append("untextured.glb")
+                except Exception as e:
+                    print(f"Warning: could not download {latest}: {e}")
 
         job["status"] = "completed"
         job["progress"] = 1.0
