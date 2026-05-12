@@ -1,0 +1,98 @@
+{
+  "4": {
+    "inputs": {"model_name": "hunyuan3d-vae-v2-1.ckpt"},
+    "class_type": "Hy3D21VAELoader"
+  },
+  "9": {
+    "inputs": {
+      "box_v": 1.01, "octree_resolution": 256, "num_chunks": 64000,
+      "mc_level": 0, "mc_algo": "mc", "enable_flash_vdm": true,
+      "force_offload": false,
+      "vae": ["4", 0], "latents": ["37", 0]
+    },
+    "class_type": "Hy3D21VAEDecode"
+  },
+  "14": {
+    "inputs": {"image": "IMAGE_FILENAME"},
+    "class_type": "Hy3D21LoadImageWithTransparency"
+  },
+  "19": {
+    "inputs": {
+      "camera_azimuths": "0, 90, 180, 270, 0, 180",
+      "camera_elevations": "0, 0, 0, 0, 90, -90",
+      "view_weights": "1, 0.5, 1, 0.5, 1, 1",
+      "ortho_scale": 1.1
+    },
+    "class_type": "Hy3D21CameraConfig"
+  },
+  "20": {
+    "inputs": {
+      "view_size": 768, "steps": 15, "guidance_scale": 3,
+      "texture_size": 1024, "unwrap_mesh": false,
+      "seed": 0,
+      "trimesh": ["45", 0], "camera_config": ["19", 0],
+      "image": ["58", 0]
+    },
+    "class_type": "Hy3DMultiViewsGenerator"
+  },
+  "21": {
+    "inputs": {
+      "pipeline": ["20", 0], "camera_config": ["19", 0],
+      "albedo": ["20", 1], "mr": ["20", 2]
+    },
+    "class_type": "Hy3DBakeMultiViews"
+  },
+  "30": {
+    "inputs": {"value": 4000},
+    "class_type": "INTConstant"
+  },
+  "37": {
+    "inputs": {
+      "model": "hunyuan3d-dit-v2-1.ckpt", "steps": 30,
+      "guidance_scale": 8.5, "seed": 0,
+      "attention_mode": "sdpa",
+      "image": ["58", 0]
+    },
+    "class_type": "Hy3DMeshGenerator"
+  },
+  "43": {
+    "inputs": {
+      "remove_floaters": true, "remove_degenerate_faces": true,
+      "reduce_faces": true, "max_facenum": ["30", 0],
+      "smooth_normals": true,
+      "trimesh": ["9", 0]
+    },
+    "class_type": "Hy3D21PostprocessMesh"
+  },
+  "44": {
+    "inputs": {
+      "filename_prefix": "Untextured",
+      "file_format": "glb", "save_file": true,
+      "trimesh": ["43", 0]
+    },
+    "class_type": "Hy3D21ExportMesh"
+  },
+  "45": {
+    "inputs": {"trimesh": ["43", 0]},
+    "class_type": "Hy3D21MeshUVWrap"
+  },
+  "49": {
+    "inputs": {
+      "output_mesh_name": "Textured",
+      "pipeline": ["21", 0], "albedo": ["21", 1],
+      "albedo_mask": ["21", 2], "mr": ["21", 3], "mr_mask": ["21", 4]
+    },
+    "class_type": "Hy3DInPaint"
+  },
+  "55": {
+    "inputs": {
+      "filename_prefix": "Texture",
+      "images": ["49", 0]
+    },
+    "class_type": "SaveImage"
+  },
+  "58": {
+    "inputs": {"image": ["14", 2]},
+    "class_type": "Image Remove Background (rembg)"
+  }
+}
