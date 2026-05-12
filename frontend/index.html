@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3d generator</title>
+    <link rel="stylesheet" href="/style.css">
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+</head>
+<body>
+    <!-- Password Gate -->
+    <main id="auth-gate">
+        <h1>3d generator</h1>
+        <p class="subtitle">enter password to continue</p>
+        <div class="input-group">
+            <input type="password" id="password-input" placeholder="password" autocomplete="off">
+            <button id="auth-btn" onclick="authenticate()">enter</button>
+        </div>
+        <p id="auth-error" class="error-text hidden"></p>
+    </main>
+
+    <!-- Main App -->
+    <main id="app" class="hidden">
+        <div class="header-row">
+            <h1>3d generator</h1>
+            <div id="gpu-status" class="status-dot offline">
+                <span class="dot"></span>
+                <span id="gpu-status-text">checking...</span>
+            </div>
+        </div>
+        <p class="subtitle">upload an image, get a 3d model</p>
+
+        <!-- Upload Area -->
+        <div id="upload-area" class="upload-area" onclick="document.getElementById('file-input').click()">
+            <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.webp" hidden>
+            <p id="upload-text">drag & drop an image here, or click to browse</p>
+            <img id="upload-preview" class="upload-preview hidden" alt="preview">
+        </div>
+
+        <button id="generate-btn" onclick="startGeneration()" disabled>generate</button>
+
+        <!-- Progress -->
+        <div id="progress-section" class="hidden">
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <p id="status-text" class="status-text"></p>
+        </div>
+
+        <!-- Error -->
+        <div id="error-section" class="hidden">
+            <p id="error-text" class="error-text"></p>
+        </div>
+
+        <!-- Preview -->
+        <div id="preview-section" class="hidden">
+            <div class="preview-tabs">
+                <button class="tab active" data-tab="textured" onclick="switchTab('textured')">textured</button>
+                <button class="tab" data-tab="untextured" onclick="switchTab('untextured')">untextured</button>
+                <button class="tab" data-tab="texture" onclick="switchTab('texture')">texture</button>
+            </div>
+
+            <div id="tab-textured" class="tab-content active">
+                <model-viewer id="viewer-textured" camera-controls auto-rotate shadow-intensity="1" exposure="1" alt="textured 3d model"></model-viewer>
+            </div>
+
+            <div id="tab-untextured" class="tab-content">
+                <model-viewer id="viewer-untextured" camera-controls auto-rotate shadow-intensity="1" exposure="1" alt="untextured 3d model"></model-viewer>
+            </div>
+
+            <div id="tab-texture" class="tab-content">
+                <img id="texture-image" class="texture-image" alt="texture map">
+            </div>
+
+            <a id="download-btn" class="download-btn">download zip</a>
+        </div>
+    </main>
+
+    <script src="/app.js"></script>
+</body>
+</html>
