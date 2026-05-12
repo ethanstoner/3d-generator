@@ -131,7 +131,7 @@ async def submit_and_listen(workflow: dict, on_progress, timeout: float = 600):
         # Drain any initial status message ComfyUI sends on connect
         try:
             await asyncio.wait_for(ws.recv(), timeout=1.0)
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, Exception):
             pass
 
         # Now submit the workflow (WS is already listening)
@@ -152,7 +152,29 @@ async def submit_and_listen(workflow: dict, on_progress, timeout: float = 600):
             msg_type = msg.get("type")
             data = msg.get("data", {})
 
-            if msg_type == "progress" and data.get("prompt_id") == prompt_id:
+            # Modern ComfyUI: progress_state events with per-node progress
+            if msg_type == "progress_state" and data.get("prompt_id") == prompt_id:
+                nodes = data.get("nodes", {})
+                for node_id, node_info in nodes.items():
+                    state = node_info.get("state", "")
+                    value = node_info.get("value", 0)
+                    max_val = node_info.get("max", 1)
+
+                    if state in ("executing", "running"):
+                        current_node = node_id
+                        current_stage = NODE_STAGES.get(node_id, f"processing node {node_id}")
+                        step = int(value * max_val) if isinstance(value, float) and value <= 1 else int(value)
+                        total = int(max_val)
+                        if current_node in NODE_PROGRESS_RANGE:
+                            start, end = NODE_PROGRESS_RANGE[current_node]
+                            frac = value / max_val if max_val > 0 else 0
+                            overall = start + frac * (end - start)
+                        else:
+                            overall = 0
+                        await on_progress(current_stage, step, total, overall)
+
+            # Legacy ComfyUI: progress events
+            elif msg_type == "progress" and data.get("prompt_id") == prompt_id:
                 step = data.get("value", 0)
                 total = data.get("max", 1)
                 if current_node and current_node in NODE_PROGRESS_RANGE:
