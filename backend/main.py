@@ -150,21 +150,18 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
         workflow["37"]["inputs"]["seed"] = random.randint(0, 2**53)
         workflow["20"]["inputs"]["seed"] = random.randint(0, 2**53)
 
-        # Submit to ComfyUI
+        # Submit and listen (WS opens before submission so we catch all progress)
         job["stage"] = "submitting"
-        prompt_id = await comfyui.submit_workflow(workflow)
-        job["prompt_id"] = prompt_id
         job["status"] = "running"
-        job["stage"] = "generating 3d model"
 
-        # Listen for progress
         async def on_progress(stage, step, total, overall):
             job["stage"] = stage
             job["step"] = step
             job["total_steps"] = total
             job["progress"] = round(overall, 2)
 
-        await comfyui.listen_progress(prompt_id, on_progress)
+        prompt_id = await comfyui.submit_and_listen(workflow, on_progress)
+        job["prompt_id"] = prompt_id
 
         # Collect outputs
         job["stage"] = "collecting outputs"

@@ -117,16 +117,33 @@ for _nid, _weight in PIPELINE_ORDER:
     NODE_PROGRESS_RANGE[_nid] = (_cumulative / 100, (_cumulative + _weight) / 100)
     _cumulative += _weight
 
-async def listen_progress(prompt_id: str, on_progress, timeout: float = 600):
-    """Listen to WebSocket for progress updates on a specific prompt.
+async def submit_and_listen(workflow: dict, on_progress, timeout: float = 600):
+    """Open WebSocket FIRST, then submit workflow, then listen for progress.
+    This ensures we don't miss any progress events.
     on_progress(stage, step, total_steps, overall_progress) is called on each update.
-    overall_progress is 0.0-1.0 based on pipeline position.
-    Returns when the prompt completes or fails.
-    Raises RuntimeError on execution error or timeout (default 10 min)."""
+    Returns prompt_id when complete.
+    Raises RuntimeError on execution error or timeout."""
     ws_url = f"ws://{COMFYUI_URL.replace('http://', '')}/ws?clientId={CLIENT_ID}"
     current_stage = "starting"
     current_node = None
+
     async with websockets.connect(ws_url) as ws:
+        # Drain any initial status message ComfyUI sends on connect
+        try:
+            await asyncio.wait_for(ws.recv(), timeout=1.0)
+        except asyncio.TimeoutError:
+            pass
+
+        # Now submit the workflow (WS is already listening)
+        payload = {"prompt": workflow, "client_id": CLIENT_ID}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(f"{COMFYUI_URL}/prompt", json=payload)
+            r.raise_for_status()
+            prompt_id = r.json()["prompt_id"]
+
+        await on_progress("queued", 0, 0, 0)
+
+        # Listen for progress
         while True:
             raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
             if isinstance(raw, bytes):
@@ -138,7 +155,6 @@ async def listen_progress(prompt_id: str, on_progress, timeout: float = 600):
             if msg_type == "progress" and data.get("prompt_id") == prompt_id:
                 step = data.get("value", 0)
                 total = data.get("max", 1)
-                # Interpolate within current node's progress range
                 if current_node and current_node in NODE_PROGRESS_RANGE:
                     start, end = NODE_PROGRESS_RANGE[current_node]
                     frac = step / total if total > 0 else 0
@@ -150,10 +166,9 @@ async def listen_progress(prompt_id: str, on_progress, timeout: float = 600):
             elif msg_type == "executing" and data.get("prompt_id") == prompt_id:
                 node_id = data.get("node")
                 if node_id is None:
-                    return
+                    return prompt_id
                 current_node = node_id
                 current_stage = NODE_STAGES.get(node_id, f"processing node {node_id}")
-                # Set progress to the start of this node's range
                 if node_id in NODE_PROGRESS_RANGE:
                     overall = NODE_PROGRESS_RANGE[node_id][0]
                 else:
@@ -163,3 +178,5 @@ async def listen_progress(prompt_id: str, on_progress, timeout: float = 600):
             elif msg_type == "execution_error" and data.get("prompt_id") == prompt_id:
                 error_msg = data.get("exception_message", "unknown error")
                 raise RuntimeError(f"ComfyUI error: {error_msg}")
+
+    return prompt_id
