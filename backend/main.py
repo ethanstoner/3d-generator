@@ -158,12 +158,11 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
         job["stage"] = "generating 3d model"
 
         # Listen for progress
-        async def on_progress(stage, step, total):
+        async def on_progress(stage, step, total, overall):
             job["stage"] = stage
             job["step"] = step
             job["total_steps"] = total
-            if total > 0:
-                job["progress"] = round(step / total, 2)
+            job["progress"] = round(overall, 2)
 
         await comfyui.listen_progress(prompt_id, on_progress)
 

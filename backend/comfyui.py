@@ -91,13 +91,41 @@ NODE_STAGES = {
     "30": "configuring parameters",
 }
 
+# Pipeline execution order with weight (% of total time).
+# Nodes with step-by-step progress get larger weights.
+PIPELINE_ORDER = [
+    ("14", 1),   # load image
+    ("58", 3),   # remove background
+    ("37", 30),  # mesh generation (30 diffusion steps)
+    ("4",  1),   # load VAE
+    ("9",  15),  # VAE decode (volume decoding)
+    ("43", 5),   # postprocess mesh
+    ("44", 2),   # export untextured
+    ("45", 3),   # UV unwrap
+    ("30", 1),   # configure params
+    ("19", 1),   # camera config
+    ("20", 20),  # multi-view texture gen (15 steps)
+    ("21", 10),  # bake textures
+    ("49", 6),   # inpaint
+    ("55", 2),   # save image
+]
+
+# Build cumulative progress lookup: node_id -> (start%, end%)
+_cumulative = 0
+NODE_PROGRESS_RANGE: dict[str, tuple[float, float]] = {}
+for _nid, _weight in PIPELINE_ORDER:
+    NODE_PROGRESS_RANGE[_nid] = (_cumulative / 100, (_cumulative + _weight) / 100)
+    _cumulative += _weight
+
 async def listen_progress(prompt_id: str, on_progress, timeout: float = 600):
     """Listen to WebSocket for progress updates on a specific prompt.
-    on_progress(stage, step, total_steps) is called on each update.
+    on_progress(stage, step, total_steps, overall_progress) is called on each update.
+    overall_progress is 0.0-1.0 based on pipeline position.
     Returns when the prompt completes or fails.
     Raises RuntimeError on execution error or timeout (default 10 min)."""
     ws_url = f"ws://{COMFYUI_URL.replace('http://', '')}/ws?clientId={CLIENT_ID}"
     current_stage = "starting"
+    current_node = None
     async with websockets.connect(ws_url) as ws:
         while True:
             raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
@@ -110,14 +138,27 @@ async def listen_progress(prompt_id: str, on_progress, timeout: float = 600):
             if msg_type == "progress" and data.get("prompt_id") == prompt_id:
                 step = data.get("value", 0)
                 total = data.get("max", 1)
-                await on_progress(current_stage, step, total)
+                # Interpolate within current node's progress range
+                if current_node and current_node in NODE_PROGRESS_RANGE:
+                    start, end = NODE_PROGRESS_RANGE[current_node]
+                    frac = step / total if total > 0 else 0
+                    overall = start + frac * (end - start)
+                else:
+                    overall = 0
+                await on_progress(current_stage, step, total, overall)
 
             elif msg_type == "executing" and data.get("prompt_id") == prompt_id:
                 node_id = data.get("node")
                 if node_id is None:
                     return
+                current_node = node_id
                 current_stage = NODE_STAGES.get(node_id, f"processing node {node_id}")
-                await on_progress(current_stage, 0, 0)
+                # Set progress to the start of this node's range
+                if node_id in NODE_PROGRESS_RANGE:
+                    overall = NODE_PROGRESS_RANGE[node_id][0]
+                else:
+                    overall = 0
+                await on_progress(current_stage, 0, 0, overall)
 
             elif msg_type == "execution_error" and data.get("prompt_id") == prompt_id:
                 error_msg = data.get("exception_message", "unknown error")

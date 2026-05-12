@@ -121,10 +121,13 @@ async function pollJob() {
     try {
         const r = await fetch(`/api/jobs/${activeJobId}`);
         const data = await r.json();
-        document.getElementById('progress-fill').style.width = Math.round(data.progress * 100) + '%';
-        document.getElementById('status-text').textContent = data.total_steps > 0
-            ? `${data.stage}... step ${data.step}/${data.total_steps}`
-            : data.stage + '...';
+        const pct = Math.round(data.progress * 100);
+        document.getElementById('progress-fill').style.width = pct + '%';
+        let statusMsg = `${pct}% — ${data.stage}`;
+        if (data.total_steps > 0) {
+            statusMsg += ` (${data.step}/${data.total_steps})`;
+        }
+        document.getElementById('status-text').textContent = statusMsg;
 
         if (data.status === 'completed') {
             clearInterval(pollInterval);
