@@ -5,14 +5,19 @@ import asyncio
 import httpx
 import websockets
 
-COMFYUI_URL = os.getenv("COMFYUI_URL", "http://127.0.0.1:8188")
 CLIENT_ID = str(uuid.uuid4())
+
+def get_comfyui_url():
+    return os.getenv("COMFYUI_URL", "http://127.0.0.1:8188")
+
+def get_output_dir():
+    return os.getenv("COMFYUI_OUTPUT_DIR", "")
 
 async def is_online() -> bool:
     """Check if ComfyUI is reachable."""
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            r = await client.get(f"{COMFYUI_URL}/system_stats")
+            r = await client.get(f"{get_comfyui_url()}/system_stats")
             return r.status_code == 200
     except Exception:
         return False
@@ -21,7 +26,7 @@ async def upload_image(file_bytes: bytes, filename: str) -> str:
     """Upload an image to ComfyUI. Returns the stored filename."""
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.post(
-            f"{COMFYUI_URL}/upload/image",
+            f"{get_comfyui_url()}/upload/image",
             files={"image": (filename, file_bytes, "image/png")},
             data={"overwrite": "true"},
         )
@@ -32,14 +37,14 @@ async def submit_workflow(workflow: dict) -> str:
     """Submit a workflow to ComfyUI. Returns prompt_id."""
     payload = {"prompt": workflow, "client_id": CLIENT_ID}
     async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.post(f"{COMFYUI_URL}/prompt", json=payload)
+        r = await client.post(f"{get_comfyui_url()}/prompt", json=payload)
         r.raise_for_status()
         return r.json()["prompt_id"]
 
 async def get_history(prompt_id: str) -> dict:
     """Get execution history for a prompt."""
     async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.get(f"{COMFYUI_URL}/history/{prompt_id}")
+        r = await client.get(f"{get_comfyui_url()}/history/{prompt_id}")
         r.raise_for_status()
         return r.json().get(prompt_id, {})
 
@@ -47,31 +52,21 @@ async def download_output(filename: str, subfolder: str = "", filetype: str = "o
     """Download an output file from ComfyUI."""
     params = {"filename": filename, "subfolder": subfolder, "type": filetype}
     async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(f"{COMFYUI_URL}/view", params=params)
+        r = await client.get(f"{get_comfyui_url()}/view", params=params)
         r.raise_for_status()
         return r.content
 
-async def find_recent_outputs(prefix: str, ext: str, since_timestamp: float) -> list[str]:
-    """List output files matching prefix+ext that were modified after since_timestamp.
-    Uses ComfyUI's /view endpoint to probe likely filenames."""
-    found = []
-    # Try the base name first (e.g., Textured.glb)
-    candidates = [f"{prefix}.{ext}"]
-    # Then try numbered suffixes (e.g., Untextured_00001_.glb up to _00200_)
-    for i in range(1, 201):
-        candidates.append(f"{prefix}_{i:05d}_.{ext}")
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        for fname in candidates:
-            try:
-                r = await client.head(
-                    f"{COMFYUI_URL}/view",
-                    params={"filename": fname, "type": "output"},
-                )
-                if r.status_code == 200:
-                    found.append(fname)
-            except Exception:
-                continue
-    return found
+def list_output_files(prefix: str, ext: str) -> list[str]:
+    """List output files matching prefix*.ext from ComfyUI output directory.
+    Uses filesystem if COMFYUI_OUTPUT_DIR is set, otherwise returns empty."""
+    output_dir_path = get_output_dir()
+    if not output_dir_path:
+        return []
+    from pathlib import Path
+    output_dir = Path(output_dir_path)
+    if not output_dir.exists():
+        return []
+    return sorted([f.name for f in output_dir.glob(f"{prefix}*.{ext}")])
 
 # Map workflow node IDs to human-readable stage descriptions
 NODE_STAGES = {
@@ -123,7 +118,7 @@ async def submit_and_listen(workflow: dict, on_progress, timeout: float = 600):
     on_progress(stage, step, total_steps, overall_progress) is called on each update.
     Returns prompt_id when complete.
     Raises RuntimeError on execution error or timeout."""
-    ws_url = f"ws://{COMFYUI_URL.replace('http://', '')}/ws?clientId={CLIENT_ID}"
+    ws_url = f"ws://{get_comfyui_url().replace('http://', '')}/ws?clientId={CLIENT_ID}"
     current_stage = "starting"
     current_node = None
 
@@ -137,7 +132,7 @@ async def submit_and_listen(workflow: dict, on_progress, timeout: float = 600):
         # Now submit the workflow (WS is already listening)
         payload = {"prompt": workflow, "client_id": CLIENT_ID}
         async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(f"{COMFYUI_URL}/prompt", json=payload)
+            r = await client.post(f"{get_comfyui_url()}/prompt", json=payload)
             r.raise_for_status()
             prompt_id = r.json()["prompt_id"]
 
