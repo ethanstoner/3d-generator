@@ -261,27 +261,29 @@ model-viewer {
     opacity: 0.8;
 }
 
-/* History */
-.subtitle {
+/* Header Right */
+.header-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
 }
 
+/* History Icon */
 .history-icon {
     background: none;
     border: none;
     color: #ccc;
-    padding: 2px;
+    padding: 4px;
     cursor: pointer;
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    justify-content: center;
     transition: color 0.15s;
     border-radius: 4px;
 }
 
 .history-icon:hover {
-    color: #000;
+    color: #666;
     opacity: 1;
 }
 
