@@ -123,9 +123,14 @@ async function pollJob() {
         const data = await r.json();
         const pct = Math.round(data.progress * 100);
         document.getElementById('progress-fill').style.width = pct + '%';
-        let statusMsg = `${pct}% — ${data.stage}`;
-        if (data.total_steps > 0) {
-            statusMsg += ` (${data.step}/${data.total_steps})`;
+        let statusMsg;
+        if (data.status === 'queued' && data.queue_position > 1) {
+            statusMsg = `waiting in queue (position ${data.queue_position})`;
+        } else {
+            statusMsg = `${pct}% — ${data.stage}`;
+            if (data.total_steps > 0) {
+                statusMsg += ` (${data.step}/${data.total_steps})`;
+            }
         }
         document.getElementById('status-text').textContent = statusMsg;
 
