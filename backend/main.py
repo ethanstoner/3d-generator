@@ -32,9 +32,10 @@ signer = URLSafeSerializer(SECRET_KEY)
 app = FastAPI()
 
 # --- In-memory job store ---
-# {job_id: {status, progress, stage, step, total_steps, prompt_id, error, files}}
+# {job_id: {status, progress, stage, step, total_steps, prompt_id, error, files, queue_position}}
 jobs: dict[str, dict] = {}
-current_job_id: str | None = None  # only one job at a time
+job_queue: asyncio.Queue = asyncio.Queue()
+queue_order: list[str] = []  # ordered list of queued job IDs for position tracking
 
 
 # --- History (persistent JSON file) ---
@@ -57,10 +58,32 @@ def append_history(entry: dict):
     save_history(history)
 
 
+# --- Queue Worker ---
+async def queue_worker():
+    """Process jobs one at a time from the queue."""
+    while True:
+        job_id, file_bytes, filename = await job_queue.get()
+        if job_id in queue_order:
+            queue_order.remove(job_id)
+        # Update positions for remaining queued jobs
+        for i, qid in enumerate(queue_order):
+            if qid in jobs:
+                jobs[qid]["queue_position"] = i + 1
+        try:
+            await _run_job(job_id, file_bytes, filename)
+        except Exception as e:
+            if job_id in jobs:
+                jobs[job_id]["status"] = "failed"
+                jobs[job_id]["error"] = str(e)
+        finally:
+            job_queue.task_done()
+
+
 # --- Startup ---
 @app.on_event("startup")
 async def startup():
     JOBS_DIR.mkdir(exist_ok=True)
+    asyncio.create_task(queue_worker())
 
 
 # --- Auth helpers ---
@@ -102,11 +125,7 @@ async def gpu_status(request: Request):
 
 @app.post("/api/generate")
 async def generate(request: Request, mode: str = Form(...), file: UploadFile | None = File(None)):
-    global current_job_id
     check_auth(request)
-
-    if current_job_id and jobs.get(current_job_id, {}).get("status") in ("queued", "running"):
-        raise HTTPException(429, detail="gpu is busy, try again shortly")
 
     if not await comfyui.is_online():
         raise HTTPException(503, detail="gpu is offline")
@@ -129,25 +148,27 @@ async def generate(request: Request, mode: str = Form(...), file: UploadFile | N
     job_dir = JOBS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
+    position = job_queue.qsize() + 1  # +1 for the currently running job if any
+    queue_order.append(job_id)
+
     jobs[job_id] = {
         "status": "queued",
         "progress": 0,
-        "stage": "uploading",
+        "stage": f"queued (position {position})" if position > 1 else "queued",
         "step": 0,
         "total_steps": 0,
         "prompt_id": None,
         "error": None,
         "files": [],
+        "queue_position": position,
     }
-    current_job_id = job_id
 
-    # Run in background
-    asyncio.create_task(_run_job(job_id, file_bytes, file.filename or "input.png"))
+    # Add to queue (worker processes one at a time)
+    await job_queue.put((job_id, file_bytes, file.filename or "input.png"))
     return {"job_id": job_id}
 
 
 async def _run_job(job_id: str, file_bytes: bytes, filename: str):
-    global current_job_id
     job = jobs[job_id]
     job_dir = JOBS_DIR / job_id
     try:
@@ -273,8 +294,6 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
         job["status"] = "failed"
         job["error"] = str(e)
         job["stage"] = "failed"
-    finally:
-        current_job_id = None
 
 
 @app.get("/api/jobs/{job_id}")
@@ -291,6 +310,7 @@ async def get_job(job_id: str, request: Request):
         "total_steps": job["total_steps"],
         "files": job["files"],
         "error": job["error"],
+        "queue_position": job.get("queue_position", 0),
     }
 
 
