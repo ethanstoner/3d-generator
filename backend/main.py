@@ -166,7 +166,7 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
         workflow["20"]["inputs"]["seed"] = random.randint(0, 2**53)
 
         # Snapshot existing Untextured files so we can find the new one after
-        existing_untextured = set(await comfyui.find_recent_outputs("Untextured", "glb", 0))
+        existing_untextured = set(comfyui.list_output_files("Untextured", "glb"))
 
         # Submit and listen (WS opens before submission so we catch all progress)
         job["stage"] = "submitting"
@@ -208,25 +208,31 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
         #    by Hy3DInPaint (Textured.glb) and Hy3D21ExportMesh (Untextured_NNNNN_.glb)
         #    They don't appear in the history API, so probe for them
         if "textured.glb" not in collected_files:
-            try:
-                data = await comfyui.download_output("Textured.glb")
-                (job_dir / "textured.glb").write_bytes(data)
-                collected_files.append("textured.glb")
-            except Exception as e:
-                print(f"Warning: could not download Textured.glb: {e}")
+            from pathlib import Path as P
+            if comfyui.get_output_dir():
+                src = P(comfyui.get_output_dir()) / "Textured.glb"
+                if src.exists():
+                    shutil.copy2(str(src), str(job_dir / "textured.glb"))
+                    collected_files.append("textured.glb")
+            if "textured.glb" not in collected_files:
+                try:
+                    data = await comfyui.download_output("Textured.glb")
+                    (job_dir / "textured.glb").write_bytes(data)
+                    collected_files.append("textured.glb")
+                except Exception as e:
+                    print(f"Warning: could not download Textured.glb: {e}")
 
         if "untextured.glb" not in collected_files:
             # Find the NEW Untextured file by comparing against pre-generation snapshot
-            all_untextured = set(await comfyui.find_recent_outputs("Untextured", "glb", 0))
+            all_untextured = set(comfyui.list_output_files("Untextured", "glb"))
             new_files = sorted(all_untextured - existing_untextured)
             if new_files:
                 latest = new_files[-1]
-                try:
-                    data = await comfyui.download_output(latest)
-                    (job_dir / "untextured.glb").write_bytes(data)
+                from pathlib import Path as P
+                src = P(comfyui.get_output_dir()) / latest
+                if src.exists():
+                    shutil.copy2(str(src), str(job_dir / "untextured.glb"))
                     collected_files.append("untextured.glb")
-                except Exception as e:
-                    print(f"Warning: could not download {latest}: {e}")
 
         job["status"] = "completed"
         job["progress"] = 1.0
