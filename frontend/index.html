@@ -23,17 +23,16 @@
     <main id="app" class="hidden">
         <div class="header-row">
             <h1>3d generator</h1>
-            <div class="header-right">
-                <button class="history-icon" onclick="toggleHistory()" title="history">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
-                </button>
-                <div id="gpu-status" class="status-dot offline">
-                    <span class="dot"></span>
-                    <span id="gpu-status-text">checking...</span>
-                </div>
+            <div id="gpu-status" class="status-dot offline">
+                <span class="dot"></span>
+                <span id="gpu-status-text">checking...</span>
             </div>
         </div>
-        <p class="subtitle">upload an image, get a 3d model</p>
+        <p class="subtitle">upload an image, get a 3d model
+            <button class="history-icon" onclick="toggleHistory()" title="history">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+            </button>
+        </p>
 
         <!-- Upload Area -->
         <div id="upload-area" class="upload-area" onclick="document.getElementById('file-input').click()">
@@ -70,7 +69,7 @@
             </div>
 
             <div id="tab-untextured" class="tab-content">
-                <model-viewer id="viewer-untextured" camera-controls auto-rotate shadow-intensity="1" exposure="1" alt="untextured 3d model"></model-viewer>
+                <model-viewer id="viewer-untextured" camera-controls auto-rotate shadow-intensity="1" exposure="0.8" environment-image="neutral" alt="untextured 3d model"></model-viewer>
             </div>
 
             <div id="tab-texture" class="tab-content">

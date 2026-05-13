@@ -234,6 +234,10 @@ model-viewer {
     margin-bottom: 16px;
 }
 
+#viewer-untextured {
+    background: #e0e0e0;
+}
+
 .texture-image {
     width: 100%;
     border: 1px solid #e0e0e0;
@@ -261,25 +265,22 @@ model-viewer {
     opacity: 0.8;
 }
 
-/* Header Right */
-.header-right {
+/* History Icon */
+.subtitle {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 6px;
 }
 
-/* History Icon */
 .history-icon {
     background: none;
     border: none;
     color: #ccc;
-    padding: 4px;
+    padding: 2px;
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
     transition: color 0.15s;
-    border-radius: 4px;
 }
 
 .history-icon:hover {
