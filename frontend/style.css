@@ -262,26 +262,32 @@ model-viewer {
 }
 
 /* History */
-.history-toggle {
-    background: none;
-    color: #999;
-    font-size: 13px;
-    font-weight: 400;
-    padding: 8px 0;
-    margin-top: 24px;
-    cursor: pointer;
-    border: none;
-    border-bottom: 1px solid transparent;
-    transition: color 0.15s;
+.subtitle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.history-toggle:hover {
+.history-icon {
+    background: none;
+    border: none;
+    color: #ccc;
+    padding: 2px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    transition: color 0.15s;
+    border-radius: 4px;
+}
+
+.history-icon:hover {
     color: #000;
     opacity: 1;
 }
 
 .history-list {
     margin-top: 16px;
+    margin-bottom: 16px;
 }
 
 .history-item {
