@@ -172,3 +172,55 @@ function switchTab(name) {
     document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
 }
+
+// --- History ---
+let historyOpen = false;
+
+function toggleHistory() {
+    historyOpen = !historyOpen;
+    const list = document.getElementById('history-list');
+    if (historyOpen) {
+        list.classList.remove('hidden');
+        loadHistory();
+    } else {
+        list.classList.add('hidden');
+    }
+}
+
+async function loadHistory() {
+    const list = document.getElementById('history-list');
+    try {
+        const r = await fetch('/api/history');
+        const data = await r.json();
+        if (!data.length) {
+            list.innerHTML = '<p class="history-empty">no generations yet</p>';
+            return;
+        }
+        list.innerHTML = data.map(item => {
+            const date = new Date(item.timestamp * 1000);
+            const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const hasThumb = item.files && item.files.includes('texture.png');
+            return `<div class="history-item" onclick="loadFromHistory('${item.job_id}', ${JSON.stringify(item.files).replace(/"/g, '&quot;')})">
+                ${hasThumb ? `<img class="history-thumb" src="/api/jobs/${item.job_id}/files/texture.png" alt="">` : '<div class="history-thumb"></div>'}
+                <div class="history-info">
+                    <div class="history-name">${item.filename || item.job_id}</div>
+                    <div class="history-date">${dateStr}</div>
+                </div>
+                <button class="history-delete" onclick="event.stopPropagation(); deleteHistory('${item.job_id}')" title="delete">×</button>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        list.innerHTML = '<p class="history-empty">failed to load history</p>';
+    }
+}
+
+function loadFromHistory(jobId, files) {
+    showPreview(jobId, files);
+    document.getElementById('progress-section').classList.add('hidden');
+    document.getElementById('error-section').classList.add('hidden');
+}
+
+async function deleteHistory(jobId) {
+    await fetch(`/api/history/${jobId}`, { method: 'DELETE' });
+    loadHistory();
+}

@@ -36,14 +36,29 @@ jobs: dict[str, dict] = {}
 current_job_id: str | None = None  # only one job at a time
 
 
-# --- Startup: clean old jobs ---
+# --- History (persistent JSON file) ---
+HISTORY_FILE = JOBS_DIR / "history.json"
+
+def load_history() -> list[dict]:
+    if HISTORY_FILE.exists():
+        try:
+            return json.loads(HISTORY_FILE.read_text())
+        except Exception:
+            return []
+    return []
+
+def save_history(history: list[dict]):
+    HISTORY_FILE.write_text(json.dumps(history, indent=2))
+
+def append_history(entry: dict):
+    history = load_history()
+    history.insert(0, entry)  # newest first
+    save_history(history)
+
+
+# --- Startup ---
 @app.on_event("startup")
 async def startup():
-    if JOBS_DIR.exists():
-        cutoff = time.time() - 86400  # 24 hours
-        for d in JOBS_DIR.iterdir():
-            if d.is_dir() and d.stat().st_mtime < cutoff:
-                shutil.rmtree(d, ignore_errors=True)
     JOBS_DIR.mkdir(exist_ok=True)
 
 
@@ -215,6 +230,14 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
         job["stage"] = "done"
         job["files"] = collected_files
 
+        # Save to persistent history
+        append_history({
+            "job_id": job_id,
+            "timestamp": int(time.time()),
+            "filename": filename,
+            "files": collected_files,
+        })
+
     except Exception as e:
         job["status"] = "failed"
         job["error"] = str(e)
@@ -255,13 +278,18 @@ async def get_file(job_id: str, filename: str, request: Request):
 @app.get("/api/jobs/{job_id}/download")
 async def download_zip(job_id: str, request: Request):
     check_auth(request)
-    job = jobs.get(job_id)
-    if not job or job["status"] != "completed":
-        raise HTTPException(404, detail="job not found or not completed")
     job_dir = JOBS_DIR / job_id
+    if not job_dir.exists():
+        raise HTTPException(404, detail="job not found")
+    # Get file list from in-memory job or scan directory
+    job = jobs.get(job_id)
+    if job and job.get("files"):
+        file_list = job["files"]
+    else:
+        file_list = [f.name for f in job_dir.iterdir() if f.is_file()]
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fname in job["files"]:
+        for fname in file_list:
             fpath = job_dir / fname
             if fpath.exists():
                 zf.write(fpath, fname)
@@ -271,6 +299,33 @@ async def download_zip(job_id: str, request: Request):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename=3d-model-{job_id}.zip"},
     )
+
+
+@app.get("/api/history")
+async def get_history_endpoint(request: Request):
+    check_auth(request)
+    history = load_history()
+    # Filter out entries whose files have been deleted
+    valid = []
+    for entry in history:
+        job_dir = JOBS_DIR / entry["job_id"]
+        if job_dir.exists() and any(job_dir.iterdir()):
+            valid.append(entry)
+    return valid
+
+
+@app.delete("/api/history/{job_id}")
+async def delete_history_entry(job_id: str, request: Request):
+    check_auth(request)
+    # Remove files
+    job_dir = JOBS_DIR / job_id
+    if job_dir.exists():
+        shutil.rmtree(job_dir, ignore_errors=True)
+    # Remove from history
+    history = load_history()
+    history = [h for h in history if h["job_id"] != job_id]
+    save_history(history)
+    return {"ok": True}
 
 
 # Serve frontend static files (must be last)
