@@ -165,6 +165,9 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
         workflow["37"]["inputs"]["seed"] = random.randint(0, 2**53)
         workflow["20"]["inputs"]["seed"] = random.randint(0, 2**53)
 
+        # Snapshot existing Untextured files so we can find the new one after
+        existing_untextured = set(await comfyui.find_recent_outputs("Untextured", "glb", 0))
+
         # Submit and listen (WS opens before submission so we catch all progress)
         job["stage"] = "submitting"
         job["status"] = "running"
@@ -213,11 +216,11 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
                 print(f"Warning: could not download Textured.glb: {e}")
 
         if "untextured.glb" not in collected_files:
-            # Find the latest Untextured_NNNNN_.glb by probing numbered suffixes
-            candidates = await comfyui.find_recent_outputs("Untextured", "glb", 0)
-            if candidates:
-                # Use the last (highest numbered) one
-                latest = sorted(candidates)[-1]
+            # Find the NEW Untextured file by comparing against pre-generation snapshot
+            all_untextured = set(await comfyui.find_recent_outputs("Untextured", "glb", 0))
+            new_files = sorted(all_untextured - existing_untextured)
+            if new_files:
+                latest = new_files[-1]
                 try:
                     data = await comfyui.download_output(latest)
                     (job_dir / "untextured.glb").write_bytes(data)
