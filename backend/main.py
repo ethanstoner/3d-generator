@@ -7,6 +7,7 @@ import random
 import asyncio
 import zipfile
 import io
+import httpx
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -223,16 +224,37 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
                     print(f"Warning: could not download Textured.glb: {e}")
 
         if "untextured.glb" not in collected_files:
-            # Find the NEW Untextured file by comparing against pre-generation snapshot
-            all_untextured = set(comfyui.list_output_files("Untextured", "glb"))
-            new_files = sorted(all_untextured - existing_untextured)
-            if new_files:
-                latest = new_files[-1]
-                from pathlib import Path as P
-                src = P(comfyui.get_output_dir()) / latest
-                if src.exists():
-                    shutil.copy2(str(src), str(job_dir / "untextured.glb"))
-                    collected_files.append("untextured.glb")
+            from pathlib import Path as P
+            if comfyui.get_output_dir():
+                # Filesystem approach: diff before/after to find the new file
+                all_untextured = set(comfyui.list_output_files("Untextured", "glb"))
+                new_files = sorted(all_untextured - existing_untextured)
+                if new_files:
+                    src = P(comfyui.get_output_dir()) / new_files[-1]
+                    if src.exists():
+                        shutil.copy2(str(src), str(job_dir / "untextured.glb"))
+                        collected_files.append("untextured.glb")
+            if "untextured.glb" not in collected_files:
+                # HTTP fallback: try downloading the latest Untextured file
+                # Probe a range to find the highest numbered one
+                latest_untextured = None
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    for i in range(200, 0, -1):
+                        fname = f"Untextured_{i:05d}_.glb"
+                        try:
+                            r = await client.head(f"{comfyui.get_comfyui_url()}/view", params={"filename": fname, "type": "output"})
+                            if r.status_code == 200:
+                                latest_untextured = fname
+                                break
+                        except Exception:
+                            continue
+                if latest_untextured:
+                    try:
+                        data = await comfyui.download_output(latest_untextured)
+                        (job_dir / "untextured.glb").write_bytes(data)
+                        collected_files.append("untextured.glb")
+                    except Exception:
+                        pass
 
         job["status"] = "completed"
         job["progress"] = 1.0
