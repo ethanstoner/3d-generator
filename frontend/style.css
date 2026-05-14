@@ -488,14 +488,29 @@ model-viewer {
     height: 56px;
 }
 
-#ph-refine-btn {
+#ph-refine-btn, #ph-research-btn {
     align-self: flex-start;
-    min-width: 160px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #fff;
+    color: #000;
+    border: 1px solid #000;
+    border-radius: 6px;
+    min-width: 140px;
 }
 
-#ph-research-btn {
-    align-self: flex-start;
-    min-width: 200px;
+#ph-refine-btn:hover, #ph-research-btn:hover {
+    background: #000;
+    color: #fff;
+    opacity: 1;
+}
+
+#ph-refine-btn:disabled, #ph-research-btn:disabled {
+    background: #fff;
+    color: #999;
+    border-color: #e0e0e0;
+    cursor: not-allowed;
 }
 
 #ph-idea:focus {
