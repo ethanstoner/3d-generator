@@ -20,7 +20,7 @@ from itsdangerous import URLSafeSerializer
 
 from backend import comfyui
 
-SITE_PASSWORD = os.getenv("SITE_PASSWORD", "letmein")
+SITE_PASSWORD = os.getenv("SITE_PASSWORD", "change-me")
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 COOKIE_NAME = "session"
 JOBS_DIR = Path(__file__).parent.parent / "jobs"
