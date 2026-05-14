@@ -423,6 +423,130 @@ model-viewer {
     margin-left: 6px;
 }
 
+/* Prompt Helper */
+.prompt-helper {
+    margin-bottom: 16px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+.prompt-helper > summary {
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #666;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.prompt-helper > summary:hover {
+    color: #000;
+}
+
+.prompt-helper > summary::-webkit-details-marker {
+    display: none;
+}
+
+.prompt-helper-body {
+    padding: 0 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ph-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ph-research {
+    padding-top: 14px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.ph-label {
+    font-size: 12px;
+    color: #999;
+}
+
+#ph-idea {
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    resize: vertical;
+    background: #fff;
+}
+
+#ph-idea:focus {
+    outline: none;
+    border-color: #000;
+}
+
+.ph-result {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.ph-card {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 8px;
+    align-items: start;
+    padding: 8px 10px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.ph-card label {
+    color: #999;
+    padding-top: 2px;
+}
+
+.ph-value {
+    color: #000;
+    word-break: break-word;
+}
+
+.ph-multiline {
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+
+.ph-copy {
+    padding: 4px 10px;
+    font-size: 11px;
+    background: #fff;
+    color: #666;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.ph-copy:hover {
+    border-color: #999;
+    color: #000;
+    opacity: 1;
+}
+
+.ph-error {
+    font-size: 12px;
+    color: #cc0000;
+    margin-top: 4px;
+}
+
+.ph-hint {
+    font-size: 11px;
+    color: #999;
+}
+
 /* Utility */
 .hidden {
     display: none !important;

@@ -258,3 +258,71 @@ async function deleteHistory(jobId) {
     await fetch(`/api/history/${jobId}`, { method: 'DELETE' });
     loadHistory();
 }
+
+// --- Prompt Helper ---
+let cachedResearchPrompt = null;
+
+async function refinePrompt() {
+    const idea = document.getElementById('ph-idea').value.trim();
+    const errEl = document.getElementById('ph-error');
+    const resultEl = document.getElementById('ph-result');
+    const btn = document.getElementById('ph-refine-btn');
+    errEl.classList.add('hidden');
+    if (!idea) { errEl.textContent = 'type an idea first'; errEl.classList.remove('hidden'); return; }
+    btn.disabled = true;
+    btn.textContent = 'thinking...';
+    try {
+        const r = await fetch('/api/prompt-help', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idea }),
+        });
+        if (!r.ok) {
+            const d = await r.json().catch(() => ({}));
+            throw new Error(d.detail || 'request failed');
+        }
+        const data = await r.json();
+        document.getElementById('ph-name').textContent = data.name;
+        document.getElementById('ph-description').textContent = data.description;
+        document.getElementById('ph-image-prompt').textContent = data.image_prompt;
+        resultEl.classList.remove('hidden');
+    } catch (e) {
+        errEl.textContent = e.message;
+        errEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'generate prompts';
+    }
+}
+
+async function copyResearchPrompt() {
+    const btn = document.getElementById('ph-research-btn');
+    const original = btn.textContent;
+    try {
+        if (!cachedResearchPrompt) {
+            const r = await fetch('/api/research-prompt');
+            if (!r.ok) throw new Error('failed to load');
+            cachedResearchPrompt = (await r.json()).prompt;
+        }
+        await navigator.clipboard.writeText(cachedResearchPrompt);
+        btn.textContent = 'copied!';
+        setTimeout(() => { btn.textContent = original; }, 1500);
+    } catch (e) {
+        btn.textContent = 'copy failed';
+        setTimeout(() => { btn.textContent = original; }, 1500);
+    }
+}
+
+document.addEventListener('click', (e) => {
+    if (!e.target.classList || !e.target.classList.contains('ph-copy')) return;
+    const targetId = e.target.dataset.target;
+    const text = document.getElementById(targetId).textContent;
+    const original = e.target.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        e.target.textContent = 'copied!';
+        setTimeout(() => { e.target.textContent = original; }, 1500);
+    }).catch(() => {
+        e.target.textContent = 'failed';
+        setTimeout(() => { e.target.textContent = original; }, 1500);
+    });
+});
