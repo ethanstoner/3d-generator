@@ -143,6 +143,8 @@ async def gpu_status(request: Request):
 @app.post("/api/prompt-help")
 async def prompt_help(request: Request, body: PromptHelpRequest):
     check_auth(request)
+    if not await comfyui.is_online():
+        raise HTTPException(503, detail="gpu is offline")
     idea = body.idea.strip()
     if not idea or len(idea) > 200:
         raise HTTPException(400, detail="idea must be 1-200 chars")
