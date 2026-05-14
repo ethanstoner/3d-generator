@@ -45,6 +45,11 @@ job_queue: asyncio.Queue = asyncio.Queue()
 queue_order: list[str] = []  # ordered list of queued job IDs for position tracking
 active_job_id: str | None = None  # currently processing job
 
+# GPU lock — serializes ComfyUI 3D jobs and Ollama prompt-help calls so they
+# never compete for VRAM on the shared GPU.
+gpu_lock = asyncio.Lock()
+PROMPT_HELP_LOCK_TIMEOUT = 90  # seconds a prompt-help call will wait for the lock
+
 
 # --- History (persistent JSON file) ---
 HISTORY_FILE = JOBS_DIR / "history.json"
@@ -80,7 +85,8 @@ async def queue_worker():
             if qid in jobs:
                 jobs[qid]["queue_position"] = i + 1
         try:
-            await _run_job(job_id, file_bytes, filename, triangles)
+            async with gpu_lock:
+                await _run_job(job_id, file_bytes, filename, triangles)
         except Exception as e:
             if job_id in jobs:
                 jobs[job_id]["status"] = "failed"
@@ -141,9 +147,15 @@ async def prompt_help(request: Request, body: PromptHelpRequest):
     if not idea or len(idea) > 200:
         raise HTTPException(400, detail="idea must be 1-200 chars")
     try:
+        await asyncio.wait_for(gpu_lock.acquire(), timeout=PROMPT_HELP_LOCK_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(503, detail="gpu busy with a 3d generation, try again in a moment")
+    try:
         return await llm.refine_idea(idea)
     except RuntimeError as e:
         raise HTTPException(503, detail=str(e))
+    finally:
+        gpu_lock.release()
 
 
 @app.get("/api/research-prompt")
