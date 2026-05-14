@@ -376,6 +376,47 @@ model-viewer {
     padding: 16px;
 }
 
+/* Triangle Presets */
+.triangle-presets {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.presets-label {
+    font-size: 12px;
+    color: #999;
+    margin-right: 4px;
+}
+
+.preset-chip {
+    background: #fff;
+    color: #666;
+    border: 1px solid #e0e0e0;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.preset-chip:hover {
+    border-color: #999;
+    color: #000;
+    opacity: 1;
+}
+
+.preset-chip.active {
+    background: #000;
+    color: #fff;
+    border-color: #000;
+    font-weight: 500;
+}
+
 /* Utility */
 .hidden {
     display: none !important;

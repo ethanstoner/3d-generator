@@ -4,6 +4,18 @@ let pollInterval = null;
 let statusInterval = null;
 let gpuOnline = false;
 
+const ALLOWED_TRIANGLES = [4000, 10000, 20000, 40000];
+let selectedTriangles = parseInt(localStorage.getItem('triangles') || '4000', 10);
+if (!ALLOWED_TRIANGLES.includes(selectedTriangles)) selectedTriangles = 4000;
+
+function selectTriangles(n) {
+    selectedTriangles = n;
+    localStorage.setItem('triangles', String(n));
+    document.querySelectorAll('.preset-chip').forEach(c => {
+        c.classList.toggle('active', parseInt(c.dataset.value, 10) === n);
+    });
+}
+
 // --- Auth ---
 async function authenticate() {
     const pw = document.getElementById('password-input').value;
@@ -32,6 +44,7 @@ function showApp() {
     document.getElementById('app').classList.remove('hidden');
     checkGpuStatus();
     statusInterval = setInterval(checkGpuStatus, 30000);
+    selectTriangles(selectedTriangles);
 }
 
 document.getElementById('password-input').addEventListener('keydown', (e) => {
@@ -103,6 +116,7 @@ async function startGeneration() {
     const fd = new FormData();
     fd.append('mode', 'image');
     fd.append('file', selectedFile);
+    fd.append('triangles', String(selectedTriangles));
 
     try {
         const r = await fetch('/api/generate', { method: 'POST', body: fd });
