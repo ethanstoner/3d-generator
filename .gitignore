@@ -3,3 +3,5 @@ jobs/
 __pycache__/
 *.pyc
 venv/
+docs/superpowers/
+.playwright-mcp/
