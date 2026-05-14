@@ -150,6 +150,13 @@ button:disabled {
     margin-top: 12px;
 }
 
+.upload-tips {
+    font-size: 12px;
+    color: #999;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
 #generate-btn {
     width: 100%;
     margin-bottom: 24px;
@@ -170,6 +177,17 @@ button:disabled {
     border-radius: 2px;
     width: 0%;
     transition: width 0.3s ease;
+}
+
+.progress-fill.pulsing {
+    width: 100% !important;
+    opacity: 0.15;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.08; }
+    50% { opacity: 0.2; }
 }
 
 .status-text {

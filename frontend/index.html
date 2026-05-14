@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3d generator</title>
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/style.css?v=3">
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 </head>
 <body>
@@ -40,6 +40,7 @@
             <p id="upload-text">drag & drop an image here, or click to browse</p>
             <img id="upload-preview" class="upload-preview hidden" alt="preview">
         </div>
+        <p class="upload-tips">tip: centered subject, plain background, square framing — generation takes ~80s</p>
 
         <button id="generate-btn" onclick="startGeneration()" disabled>generate</button>
 
@@ -83,6 +84,6 @@
         <div id="history-list" class="history-list hidden"></div>
     </main>
 
-    <script src="/app.js"></script>
+    <script src="/app.js?v=3"></script>
 </body>
 </html>
