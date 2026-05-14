@@ -102,6 +102,8 @@ function handleFile(file) {
 
 function updateGenerateButton() {
     document.getElementById('generate-btn').disabled = !selectedFile || !gpuOnline || !!activeJobId;
+    const ph = document.getElementById('ph-refine-btn');
+    if (ph) ph.disabled = !gpuOnline;
 }
 
 // --- Generate ---
