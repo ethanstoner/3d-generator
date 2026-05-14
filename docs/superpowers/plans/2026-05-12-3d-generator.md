@@ -10,8 +10,6 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-12-3d-generator-design.md`
 
-**Note:** Text-to-3D deferred — only image-to-3D for now (no Flux checkpoints installed). The model dropdown and text prompt UI are omitted until Flux is added later.
-
 ---
 
 ## File Structure

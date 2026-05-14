@@ -36,6 +36,7 @@ app = FastAPI()
 jobs: dict[str, dict] = {}
 job_queue: asyncio.Queue = asyncio.Queue()
 queue_order: list[str] = []  # ordered list of queued job IDs for position tracking
+active_job_id: str | None = None  # currently processing job
 
 
 # --- History (persistent JSON file) ---
@@ -61,8 +62,10 @@ def append_history(entry: dict):
 # --- Queue Worker ---
 async def queue_worker():
     """Process jobs one at a time from the queue."""
+    global active_job_id
     while True:
         job_id, file_bytes, filename = await job_queue.get()
+        active_job_id = job_id
         if job_id in queue_order:
             queue_order.remove(job_id)
         # Update positions for remaining queued jobs
@@ -76,6 +79,7 @@ async def queue_worker():
                 jobs[job_id]["status"] = "failed"
                 jobs[job_id]["error"] = str(e)
         finally:
+            active_job_id = None
             job_queue.task_done()
 
 
@@ -148,13 +152,14 @@ async def generate(request: Request, mode: str = Form(...), file: UploadFile | N
     job_dir = JOBS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    position = job_queue.qsize() + 1  # +1 for the currently running job if any
+    # Position = items in queue + 1 (self) + 1 if a job is currently running
+    position = job_queue.qsize() + 1 + (1 if active_job_id else 0)
     queue_order.append(job_id)
 
     jobs[job_id] = {
         "status": "queued",
         "progress": 0,
-        "stage": f"queued (position {position})" if position > 1 else "queued",
+        "stage": "queued",
         "step": 0,
         "total_steps": 0,
         "prompt_id": None,
@@ -379,5 +384,17 @@ async def delete_history_entry(job_id: str, request: Request):
     return {"ok": True}
 
 
-# Serve frontend static files (must be last)
+# Serve frontend static files with no-cache headers (must be last)
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.url.path.endswith((".html", ".js", ".css")) or request.url.path == "/":
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["CDN-Cache-Control"] = "no-cache"
+        return response
+
+app.add_middleware(NoCacheStaticMiddleware)
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

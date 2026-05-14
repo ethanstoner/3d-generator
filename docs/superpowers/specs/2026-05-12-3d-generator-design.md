@@ -8,7 +8,7 @@ A simple web app that lets friends generate 3D models (GLB) from text prompts or
 
 - **Backend:** FastAPI (Python)
 - **Frontend:** Vanilla HTML/CSS/JS (single page), Google `<model-viewer>` web component
-- **3D Pipeline:** ComfyUI at `127.0.0.1:8188` (Flux text-to-image + Hunyuan3D 2.1 image-to-3D)
+- **3D Pipeline:** ComfyUI at `127.0.0.1:8188` (Hunyuan3D 2.1 image-to-3D)
 - **Auth:** Shared password, cookie-based
 - **Deployment:** Cloudflare tunnel for external access
 
@@ -29,8 +29,7 @@ Matches the lyric generator aesthetic:
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/api/auth` | No | Validate password, set cookie |
-| `GET` | `/api/models` | Yes | List available checkpoints from ComfyUI |
-| `POST` | `/api/generate` | Yes | Submit text-to-3D or image-to-3D job |
+| `POST` | `/api/generate` | Yes | Submit image-to-3D job |
 | `GET` | `/api/jobs/{id}` | Yes | Poll job status + progress percentage |
 | `GET` | `/api/jobs/{id}/files/{filename}` | Yes | Serve individual output file (for model-viewer) |
 | `GET` | `/api/jobs/{id}/download` | Yes | Download ZIP of all outputs |
@@ -42,12 +41,7 @@ Matches the lyric generator aesthetic:
 - Response: `{ "ok": true }` + sets signed cookie
 - Error: `{ "error": "invalid password" }` (401)
 
-**GET `/api/models`**
-- Response: `{ "online": true, "models": ["flux1-dev-fp8.safetensors", ...] }`
-- Offline: `{ "online": false, "models": [] }`
-
 **POST `/api/generate`**
-- Text mode: JSON `{ "mode": "text", "model": "flux1-dev-fp8.safetensors", "prompt": "..." }`
 - Image mode: multipart form — field `mode` = `"image"`, field `file` = image upload (PNG/JPG/WEBP, max 20MB)
 - Image is uploaded to ComfyUI via `POST http://127.0.0.1:8188/upload/image` before workflow submission
 - Response: `{ "job_id": "abc123" }`
@@ -75,10 +69,8 @@ Matches the lyric generator aesthetic:
 ### Main UI (single column, centered)
 1. **Header:** "3d generator" title + subtitle
 2. **GPU status:** Green/red dot + "gpu online"/"gpu offline" text
-3. **Mode tabs:** "text to 3d" / "image to 3d" (underline-style active indicator)
-4. **Input area:**
-   - Text mode: model dropdown (populated from `/api/models`) + prompt textarea
-   - Image mode: dashed-border drag-and-drop / click-to-upload area with image preview
+3. **Input area:**
+   - Dashed-border drag-and-drop / click-to-upload area with image preview
    - "generate" button (disabled when GPU offline or job in progress)
 5. **Progress section** (hidden when idle):
    - Thin black progress bar (same as lyric generator)
@@ -96,20 +88,7 @@ Matches the lyric generator aesthetic:
 - Frontend polls `/api/models` on load and every 30 seconds; if unreachable, shows "GPU Offline"
 - Job submission returns error if ComfyUI is down
 
-### Model Discovery
-- `GET http://127.0.0.1:8188/object_info/CheckpointLoaderSimple` returns available checkpoints
-- Backend parses and returns model list to frontend for dropdown
-
-### Workflow Templates
-Two JSON workflow templates stored in backend:
-
-**Text-to-3D workflow:**
-1. CheckpointLoaderSimple (user-selected model)
-2. CLIPTextEncode (user prompt)
-3. KSampler (25 steps, CFG 1.0, dpmpp_2m) — CFG 1.0 is correct for Flux models
-4. VAE Decode
-5. Hunyuan3D (30 steps, guidance 8.5)
-6. GLB output (textured + untextured + texture PNG)
+### Workflow Template
 
 **Image-to-3D workflow:**
 1. LoadImage (user-uploaded image)
@@ -122,8 +101,7 @@ Backend swaps in user parameters before submitting to ComfyUI `/prompt` endpoint
 - Backend opens one persistent WebSocket to `ws://127.0.0.1:8188/ws?clientId={client_id}` on startup
 - Uses a unique `client_id` to match progress events to submitted jobs (ComfyUI tags progress messages with the `client_id` from the `/prompt` submission)
 - Reconnects automatically if the WebSocket drops
-- **Two-stage progress for text-to-3D:** image generation (0-45%) + 3D generation (45-100%). Status text updates to reflect current stage ("generating image... step 12/25" then "generating 3d model... step 8/30")
-- **Single-stage progress for image-to-3D:** 3D generation only (0-100%)
+- **Progress:** 3D generation (0-100%) with per-node stage descriptions
 - Frontend polls `GET /api/jobs/{id}` every 2 seconds
 
 ### Output Collection
@@ -161,7 +139,6 @@ queued -> running -> completed
     main.py              # FastAPI app, all endpoints, serves frontend/ as static files at /
     comfyui.py           # ComfyUI client (REST + WebSocket)
     workflows/
-      text_to_3d.json    # Flux -> Hunyuan3D workflow template
       image_to_3d.json   # Image -> Hunyuan3D workflow template
     requirements.txt     # fastapi, uvicorn, python-dotenv, httpx, websockets
   frontend/
