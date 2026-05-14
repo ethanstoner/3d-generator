@@ -124,9 +124,20 @@ async function pollJob() {
         const pct = Math.round(data.progress * 100);
         document.getElementById('progress-fill').style.width = pct + '%';
         let statusMsg;
-        if (data.status === 'queued' && data.queue_position > 1) {
-            statusMsg = `waiting in queue (position ${data.queue_position})`;
+        const progressBar = document.getElementById('progress-fill');
+        if (data.status === 'queued') {
+            const etaSec = data.queue_position * 80;
+            const etaStr = etaSec >= 60
+                ? `~${Math.floor(etaSec / 60)}m ${etaSec % 60}s`
+                : `~${etaSec}s`;
+            if (data.queue_position > 1) {
+                statusMsg = `waiting in queue (position ${data.queue_position}) — ${etaStr}`;
+            } else {
+                statusMsg = `waiting for gpu — ${etaStr}`;
+            }
+            progressBar.classList.add('pulsing');
         } else {
+            progressBar.classList.remove('pulsing');
             statusMsg = `${pct}% — ${data.stage}`;
             if (data.total_steps > 0) {
                 statusMsg += ` (${data.step}/${data.total_steps})`;
