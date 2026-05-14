@@ -17,8 +17,14 @@ from fastapi import FastAPI, Request, Response, UploadFile, File, Form, HTTPExce
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from itsdangerous import URLSafeSerializer
+from pydantic import BaseModel
 
 from backend import comfyui
+from backend import llm
+
+
+class PromptHelpRequest(BaseModel):
+    idea: str
 
 SITE_PASSWORD = os.getenv("SITE_PASSWORD", "change-me")
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
@@ -126,6 +132,24 @@ async def gpu_status(request: Request):
     check_auth(request)
     online = await comfyui.is_online()
     return {"online": online}
+
+
+@app.post("/api/prompt-help")
+async def prompt_help(request: Request, body: PromptHelpRequest):
+    check_auth(request)
+    idea = body.idea.strip()
+    if not idea or len(idea) > 200:
+        raise HTTPException(400, detail="idea must be 1-200 chars")
+    try:
+        return await llm.refine_idea(idea)
+    except RuntimeError as e:
+        raise HTTPException(503, detail=str(e))
+
+
+@app.get("/api/research-prompt")
+async def research_prompt(request: Request):
+    check_auth(request)
+    return {"prompt": llm.build_research_prompt()}
 
 
 @app.post("/api/generate")
