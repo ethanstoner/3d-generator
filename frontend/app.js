@@ -229,12 +229,16 @@ async function loadHistory() {
         list.innerHTML = data.map(item => {
             const date = new Date(item.timestamp * 1000);
             const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const triLabel = item.triangles
+                ? (item.triangles >= 1000 ? Math.round(item.triangles / 1000) + 'k' : String(item.triangles)) + ' tris'
+                : '';
+            const triBadge = triLabel ? `<span class="history-tris">${triLabel}</span>` : '';
             const hasThumb = item.files && item.files.includes('texture.png');
             return `<div class="history-item" onclick="loadFromHistory('${item.job_id}', ${JSON.stringify(item.files).replace(/"/g, '&quot;')})">
                 ${hasThumb ? `<img class="history-thumb" src="/api/jobs/${item.job_id}/files/texture.png" alt="">` : '<div class="history-thumb"></div>'}
                 <div class="history-info">
                     <div class="history-name">${item.filename || item.job_id}</div>
-                    <div class="history-date">${dateStr}</div>
+                    <div class="history-date">${dateStr}${triBadge}</div>
                 </div>
                 <button class="history-delete" onclick="event.stopPropagation(); deleteHistory('${item.job_id}')" title="delete">×</button>
             </div>`;
