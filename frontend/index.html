@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3d generator</title>
-    <link rel="stylesheet" href="/style.css?v=3">
+    <link rel="stylesheet" href="/style.css?v=4">
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 </head>
 <body>
@@ -41,6 +41,14 @@
             <img id="upload-preview" class="upload-preview hidden" alt="preview">
         </div>
         <p class="upload-tips">tip: centered subject, plain background, square framing — generation takes ~80s</p>
+
+        <div class="triangle-presets" role="radiogroup" aria-label="triangle count">
+            <span class="presets-label">triangles:</span>
+            <button type="button" class="preset-chip active" data-value="4000" onclick="selectTriangles(4000)">4k</button>
+            <button type="button" class="preset-chip" data-value="10000" onclick="selectTriangles(10000)">10k</button>
+            <button type="button" class="preset-chip" data-value="20000" onclick="selectTriangles(20000)">20k</button>
+            <button type="button" class="preset-chip" data-value="40000" onclick="selectTriangles(40000)">40k</button>
+        </div>
 
         <button id="generate-btn" onclick="startGeneration()" disabled>generate</button>
 
@@ -84,6 +92,6 @@
         <div id="history-list" class="history-list hidden"></div>
     </main>
 
-    <script src="/app.js?v=3"></script>
+    <script src="/app.js?v=4"></script>
 </body>
 </html>
