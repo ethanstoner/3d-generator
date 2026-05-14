@@ -1,53 +1,89 @@
 # 3d generator
 
-A small web app that turns an image into a 3D model (GLB). Friends drop in a PNG/JPG/WEBP, wait ~80 seconds, and download a textured `.glb`, an untextured `.glb`, and the texture map.
+A small web app that turns a single image into a downloadable 3D model (GLB) in about 80 seconds, powered by a local ComfyUI + Hunyuan3D 2.1 pipeline running on my own GPU.
 
-## screenshots
+Built so a couple of friends could drop in an image, watch real-time progress, and pull down a textured `.glb` they can open in Blender, Unity, or Roblox Studio.
 
-| password gate | main app |
+![main app](docs/screenshots/main-app.png)
+
+## What it does
+
+- **Image → 3D model** — upload PNG / JPG / WEBP, get back a textured GLB, an untextured GLB, and the raw texture map (PNG)
+- **Live GPU status** — the frontend pings the backend, which pings the GPU host; the dot in the header goes green when the rig is reachable, red when it's offline (powered down, network issue, ComfyUI restarting). The Generate button auto-disables when offline so users don't queue jobs that can't run.
+- **Async job queue** — multiple friends can submit at once. Jobs run one at a time on the GPU; everyone else sees their queue position and an ETA computed from a rolling ~80s per-job estimate.
+- **Real-time progress** — the backend holds a persistent WebSocket to ComfyUI, mapping per-node progress events back to the user's job and pushing percentage + current stage to the browser (polled every 2s).
+- **Persistent history** — every generation is stored on disk; users can re-open any past result in the 3D viewer or download the zip later without re-running the workflow.
+- **Three preview tabs** — textured model, untextured mesh, and the standalone texture map, all rendered in-browser with Google's `<model-viewer>` web component.
+- **Shared-password auth** — signed cookie via `itsdangerous`, 7-day session.
+
+| password gate | finished generation |
 | --- | --- |
-| ![homepage](docs/screenshots/homepage.png) | ![main app](docs/screenshots/main-app.png) |
+| ![homepage](docs/screenshots/homepage.png) | ![past generation](docs/screenshots/past-generation.png) |
 
-A finished generation, loaded back from history:
+## Architecture
 
-![past generation](docs/screenshots/past-generation.png)
+```
+┌────────────────┐    HTTPS     ┌────────────────────┐    HTTP + WS    ┌─────────────────┐
+│  Browser       │ ───────────► │  FastAPI (Linux)   │ ──────────────► │  ComfyUI (GPU)  │
+│  vanilla JS    │              │  - auth            │                 │  Hunyuan3D 2.1  │
+│  model-viewer  │ ◄─────────── │  - queue worker    │ ◄────────────── │  on RTX GPU     │
+└────────────────┘   poll 2s    │  - WS progress map │   per-node      └─────────────────┘
+                                │  - history (JSON)  │   progress
+                                └────────────────────┘
+```
 
-## how it works
+- **Backend** — FastAPI, async queue worker (`asyncio.Queue`), `httpx` for ComfyUI REST, `websockets` for live progress, `itsdangerous` for cookie signing
+- **Frontend** — single-file vanilla HTML/CSS/JS, no build step, Google `<model-viewer>` for GLB rendering
+- **3D pipeline** — ComfyUI workflow (`backend/workflows/image_to_3d.json`) running Hunyuan3D 2.1 image-to-3D on a separate Linux GPU box
+- **Storage** — per-job directory on disk (`jobs/<id>/`), `history.json` as the index
+- **Deploy** — Cloudflare Tunnel fronts the FastAPI app; no inbound ports exposed
 
-- **Frontend** — single-page vanilla HTML/CSS/JS, Google `<model-viewer>` for the 3D preview
-- **Backend** — FastAPI with an async queue worker (one job at a time, position + ETA reported to the client)
-- **3D pipeline** — a ComfyUI workflow running Hunyuan3D 2.1 image-to-3D on a separate GPU box
-- **Auth** — shared password, signed cookie
+## Project layout
 
-## run it
+```
+backend/
+  main.py              # FastAPI app, queue worker, all endpoints
+  comfyui.py           # ComfyUI client: upload, submit, listen, download
+  workflows/
+    image_to_3d.json   # Hunyuan3D workflow template
+frontend/
+  index.html
+  app.js               # auth, upload, polling, history, model-viewer wiring
+  style.css
+```
+
+## Run it locally
 
 ```bash
-cd backend
-python -m venv ../venv
-../venv/bin/pip install -r requirements.txt
-# edit .env: SITE_PASSWORD, SECRET_KEY, COMFYUI_URL
+python -m venv venv
+venv/bin/pip install -r backend/requirements.txt
+
+# .env at project root:
+#   SITE_PASSWORD=your-password
+#   SECRET_KEY=something-random
+#   COMFYUI_URL=http://your-comfyui-host:8188
+
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8090
 ```
 
-`.env` lives at the project root:
+Open `http://localhost:8090`. ComfyUI must be running with the Hunyuan3D 2.1 custom nodes installed.
 
-```
-SITE_PASSWORD=your-password
-SECRET_KEY=something-random
-COMFYUI_URL=http://your-comfyui-host:8188
-```
+## API
 
-Then open `http://localhost:8090`.
-
-## endpoints
-
-| method | path | description |
+| Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/api/auth` | validate password, set cookie |
+| `POST` | `/api/auth` | Validate password, set signed cookie |
+| `GET` | `/api/check-auth` | Check existing session |
 | `GET` | `/api/status` | ComfyUI online check |
-| `POST` | `/api/generate` | submit an image, returns `job_id` |
-| `GET` | `/api/jobs/{id}` | poll status, progress, queue position |
-| `GET` | `/api/jobs/{id}/files/{name}` | serve textured.glb / untextured.glb / texture.png |
-| `GET` | `/api/jobs/{id}/download` | zip of all outputs |
-| `GET` | `/api/history` | past generations |
-| `DELETE` | `/api/history/{id}` | delete a past generation |
+| `POST` | `/api/generate` | Submit image, returns `job_id` |
+| `GET` | `/api/jobs/{id}` | Poll status, progress, stage, queue position |
+| `GET` | `/api/jobs/{id}/files/{name}` | Serve `textured.glb` / `untextured.glb` / `texture.png` |
+| `GET` | `/api/jobs/{id}/download` | Zip of all outputs |
+| `GET` | `/api/history` | List past generations |
+| `DELETE` | `/api/history/{id}` | Delete a past generation |
+
+## Notes
+
+- The queue is in-memory; jobs persist on disk but a restart clears in-flight state. Fine for a few friends, would swap to Redis/SQLite for anything bigger.
+- GLB files for the untextured mesh are written directly to ComfyUI's output folder (not the history API), so the backend snapshots the directory before submission and diffs after to find the new file — with an HTTP fallback when the filesystem isn't reachable.
+- All `.html`/`.js`/`.css` responses send `Cache-Control: no-cache` so users behind the Cloudflare tunnel pick up frontend updates immediately.
