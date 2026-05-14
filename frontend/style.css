@@ -417,6 +417,12 @@ model-viewer {
     font-weight: 500;
 }
 
+.history-tris {
+    font-size: 11px;
+    color: #999;
+    margin-left: 6px;
+}
+
 /* Utility */
 .hidden {
     display: none !important;
