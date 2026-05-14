@@ -258,9 +258,13 @@ model-viewer {
 
 .texture-image {
     width: 100%;
+    height: 400px;
+    object-fit: contain;
+    background: #fafafa;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
     margin-bottom: 16px;
+    display: block;
 }
 
 /* Download */
@@ -475,10 +479,23 @@ model-viewer {
     padding: 10px 12px;
     font-family: inherit;
     font-size: 13px;
+    line-height: 1.4;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    resize: vertical;
+    resize: none;
     background: #fff;
+    width: 100%;
+    height: 56px;
+}
+
+#ph-refine-btn {
+    align-self: flex-start;
+    min-width: 160px;
+}
+
+#ph-research-btn {
+    align-self: flex-start;
+    min-width: 200px;
 }
 
 #ph-idea:focus {
@@ -528,6 +545,9 @@ model-viewer {
     border: 1px solid #e0e0e0;
     border-radius: 4px;
     cursor: pointer;
+    min-width: 60px;
+    text-align: center;
+    white-space: nowrap;
 }
 
 .ph-copy:hover {
