@@ -26,6 +26,7 @@ COOKIE_NAME = "session"
 JOBS_DIR = Path(__file__).parent.parent / "jobs"
 WORKFLOWS_DIR = Path(__file__).parent / "workflows"
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+ALLOWED_TRIANGLES = {4000, 10000, 20000, 40000}
 
 signer = URLSafeSerializer(SECRET_KEY)
 
@@ -64,7 +65,7 @@ async def queue_worker():
     """Process jobs one at a time from the queue."""
     global active_job_id
     while True:
-        job_id, file_bytes, filename = await job_queue.get()
+        job_id, file_bytes, filename, triangles = await job_queue.get()
         active_job_id = job_id
         if job_id in queue_order:
             queue_order.remove(job_id)
@@ -73,7 +74,7 @@ async def queue_worker():
             if qid in jobs:
                 jobs[qid]["queue_position"] = i + 1
         try:
-            await _run_job(job_id, file_bytes, filename)
+            await _run_job(job_id, file_bytes, filename, triangles)
         except Exception as e:
             if job_id in jobs:
                 jobs[job_id]["status"] = "failed"
@@ -128,7 +129,12 @@ async def gpu_status(request: Request):
 
 
 @app.post("/api/generate")
-async def generate(request: Request, mode: str = Form(...), file: UploadFile | None = File(None)):
+async def generate(
+    request: Request,
+    mode: str = Form(...),
+    triangles: int = Form(4000),
+    file: UploadFile | None = File(None),
+):
     check_auth(request)
 
     if not await comfyui.is_online():
@@ -146,6 +152,9 @@ async def generate(request: Request, mode: str = Form(...), file: UploadFile | N
     file_bytes = await file.read()
     if len(file_bytes) > 20 * 1024 * 1024:
         raise HTTPException(400, detail="image too large (max 20MB)")
+
+    if triangles not in ALLOWED_TRIANGLES:
+        raise HTTPException(400, detail="invalid triangle count")
 
     # Create job
     job_id = uuid.uuid4().hex[:8]
@@ -169,11 +178,11 @@ async def generate(request: Request, mode: str = Form(...), file: UploadFile | N
     }
 
     # Add to queue (worker processes one at a time)
-    await job_queue.put((job_id, file_bytes, file.filename or "input.png"))
+    await job_queue.put((job_id, file_bytes, file.filename or "input.png", triangles))
     return {"job_id": job_id}
 
 
-async def _run_job(job_id: str, file_bytes: bytes, filename: str):
+async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int):
     job = jobs[job_id]
     job_dir = JOBS_DIR / job_id
     try:
@@ -191,6 +200,9 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
         # Randomize seeds
         workflow["37"]["inputs"]["seed"] = random.randint(0, 2**53)
         workflow["20"]["inputs"]["seed"] = random.randint(0, 2**53)
+
+        # Override triangle count (postprocess max_facenum)
+        workflow["30"]["inputs"]["value"] = triangles
 
         # Snapshot existing Untextured files so we can find the new one after
         existing_untextured = set(comfyui.list_output_files("Untextured", "glb"))
@@ -293,6 +305,7 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str):
             "timestamp": int(time.time()),
             "filename": filename,
             "files": collected_files,
+            "triangles": triangles,
         })
 
     except Exception as e:
