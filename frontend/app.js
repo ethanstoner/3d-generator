@@ -165,7 +165,11 @@ async function pollJob() {
             clearInterval(pollInterval);
             document.getElementById('progress-fill').style.width = '100%';
             document.getElementById('status-text').textContent = 'done!';
-            showPreview(activeJobId, data.files);
+            showPreview(activeJobId, data.files, {
+                triangles: data.triangles,
+                size: data.size,
+                duration: data.duration,
+            });
             activeJobId = null;
             updateGenerateButton();
         } else if (data.status === 'failed') {
@@ -177,6 +181,19 @@ async function pollJob() {
     } catch (e) {}
 }
 
+function retryGeneration() {
+    if (!selectedFile) {
+        document.getElementById('error-text').textContent = 'select an image first';
+        return;
+    }
+    if (!gpuOnline) {
+        document.getElementById('error-text').textContent = 'gpu is offline';
+        return;
+    }
+    document.getElementById('error-section').classList.add('hidden');
+    startGeneration();
+}
+
 function showError(msg) {
     document.getElementById('error-section').classList.remove('hidden');
     document.getElementById('error-text').textContent = msg;
@@ -186,16 +203,43 @@ function showError(msg) {
 }
 
 // --- Preview ---
-function showPreview(jobId, files) {
+// Hidden tabs are loaded lazily (first time they're opened) so the visible
+// textured viewer doesn't fight the others for bandwidth on first paint.
+let preview = { jobId: null, files: [], loaded: {} };
+
+function showPreview(jobId, files, stats) {
+    preview = { jobId, files: files || [], loaded: {} };
     document.getElementById('preview-section').classList.remove('hidden');
-    if (files.includes('textured.glb'))
-        document.getElementById('viewer-textured').src = `/api/jobs/${jobId}/files/textured.glb`;
-    if (files.includes('untextured.glb'))
-        document.getElementById('viewer-untextured').src = `/api/jobs/${jobId}/files/untextured.glb`;
-    if (files.includes('texture.png'))
-        document.getElementById('texture-image').src = `/api/jobs/${jobId}/files/texture.png`;
+
+    const tv = document.getElementById('viewer-textured');
+    if (preview.files.includes('textured.glb')) {
+        // Use the already-downloaded texture as a poster for instant feedback
+        if (preview.files.includes('texture.png'))
+            tv.poster = `/api/jobs/${jobId}/files/texture.png`;
+        tv.src = `/api/jobs/${jobId}/files/textured.glb`;
+        preview.loaded.textured = true;
+    }
     document.getElementById('download-btn').href = `/api/jobs/${jobId}/download`;
+    renderModelStats(stats);
     switchTab('textured');
+}
+
+function renderModelStats(stats) {
+    const el = document.getElementById('model-stats');
+    if (!stats || (!stats.triangles && !stats.size && !stats.duration)) {
+        el.classList.add('hidden');
+        return;
+    }
+    const parts = [];
+    if (stats.triangles)
+        parts.push((stats.triangles >= 1000 ? Math.round(stats.triangles / 1000) + 'k' : stats.triangles) + ' tris');
+    if (stats.size) {
+        const mb = stats.size / (1024 * 1024);
+        parts.push(mb >= 1 ? mb.toFixed(1) + ' MB' : Math.round(stats.size / 1024) + ' KB');
+    }
+    if (stats.duration) parts.push('generated in ' + Math.round(stats.duration) + 's');
+    el.textContent = parts.join(' · ');
+    el.classList.remove('hidden');
 }
 
 function switchTab(name) {
@@ -203,6 +247,16 @@ function switchTab(name) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
+
+    // Lazy-load the hidden tabs the first time they're opened
+    if (!preview.jobId) return;
+    if (name === 'untextured' && !preview.loaded.untextured && preview.files.includes('untextured.glb')) {
+        document.getElementById('viewer-untextured').src = `/api/jobs/${preview.jobId}/files/untextured.glb`;
+        preview.loaded.untextured = true;
+    } else if (name === 'texture' && !preview.loaded.texture && preview.files.includes('texture.png')) {
+        document.getElementById('texture-image').src = `/api/jobs/${preview.jobId}/files/texture.png`;
+        preview.loaded.texture = true;
+    }
 }
 
 // --- History ---
@@ -218,6 +272,104 @@ function toggleHistory() {
         list.classList.add('hidden');
     }
 }
+
+// What's New is a modal overlay (fixed, in front of everything) so it never
+// shifts the page layout. Clicking the link toggles it; the × button, the
+// dimmed backdrop, and Esc all close it.
+function toggleWhatsNew() {
+    document.getElementById('whatsnew-modal').classList.toggle('hidden');
+}
+
+function closeWhatsNew() {
+    document.getElementById('whatsnew-modal').classList.add('hidden');
+}
+
+function openPromptHelper() {
+    showPromptMain();  // always open on the main view, not the history list
+    document.getElementById('prompthelp-modal').classList.remove('hidden');
+}
+
+function closePromptHelper() {
+    document.getElementById('prompthelp-modal').classList.add('hidden');
+}
+
+// --- Prompt-help history (shared, server-backed) ---
+let phHistoryCache = [];
+
+function showPromptMain() {
+    document.getElementById('ph-main').classList.remove('hidden');
+    document.getElementById('ph-history-panel').classList.add('hidden');
+    document.getElementById('ph-hist-toggle').classList.remove('active');
+}
+
+function togglePromptHistory() {
+    const panel = document.getElementById('ph-history-panel');
+    if (panel.classList.contains('hidden')) {
+        document.getElementById('ph-main').classList.add('hidden');
+        panel.classList.remove('hidden');
+        document.getElementById('ph-hist-toggle').classList.add('active');
+        loadPromptHistory();
+    } else {
+        showPromptMain();
+    }
+}
+
+async function loadPromptHistory() {
+    const list = document.getElementById('ph-history-list');
+    list.innerHTML = '<p class="ph-hist-empty">loading…</p>';
+    try {
+        const r = await fetch('/api/prompt-history');
+        phHistoryCache = await r.json();
+        if (!phHistoryCache.length) {
+            list.innerHTML = '<p class="ph-hist-empty">no prompt history yet</p>';
+            return;
+        }
+        list.innerHTML = phHistoryCache.map(item => {
+            const d = new Date(item.timestamp * 1000);
+            const ds = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return `<div class="ph-hist-item" onclick="usePromptHistory('${item.id}')">
+                <div class="ph-hist-info">
+                    <div class="ph-hist-name">${escapeHtml(item.name || item.idea)}</div>
+                    <div class="ph-hist-idea">${escapeHtml(item.idea)}</div>
+                    <div class="ph-hist-date">${ds}</div>
+                </div>
+                <button class="ph-hist-del" onclick="event.stopPropagation(); deletePromptHistory('${item.id}')" title="delete">×</button>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        list.innerHTML = '<p class="ph-hist-empty">failed to load history</p>';
+    }
+}
+
+function usePromptHistory(id) {
+    const item = phHistoryCache.find(h => h.id === id);
+    if (!item) return;
+    document.getElementById('ph-idea').value = item.idea || '';
+    document.getElementById('ph-name').textContent = item.name || '';
+    document.getElementById('ph-description').textContent = item.description || '';
+    document.getElementById('ph-image-prompt').textContent = item.image_prompt || '';
+    document.getElementById('ph-result').classList.remove('hidden');
+    document.getElementById('ph-error').classList.add('hidden');
+    showPromptMain();
+}
+
+async function deletePromptHistory(id) {
+    await fetch(`/api/prompt-history/${id}`, { method: 'DELETE' });
+    loadPromptHistory();
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeWhatsNew();
+        closePromptHelper();
+    }
+});
 
 async function loadHistory() {
     const list = document.getElementById('history-list');
@@ -236,7 +388,8 @@ async function loadHistory() {
                 : '';
             const triBadge = triLabel ? `<span class="history-tris">${triLabel}</span>` : '';
             const hasThumb = item.files && item.files.includes('texture.png');
-            return `<div class="history-item" onclick="loadFromHistory('${item.job_id}', ${JSON.stringify(item.files).replace(/"/g, '&quot;')})">
+            const stats = JSON.stringify({ triangles: item.triangles, size: item.size, duration: item.duration }).replace(/"/g, '&quot;');
+            return `<div class="history-item" onclick="loadFromHistory('${item.job_id}', ${JSON.stringify(item.files).replace(/"/g, '&quot;')}, ${stats})">
                 ${hasThumb ? `<img class="history-thumb" src="/api/jobs/${item.job_id}/files/texture.png" alt="">` : '<div class="history-thumb"></div>'}
                 <div class="history-info">
                     <div class="history-name">${item.filename || item.job_id}</div>
@@ -250,8 +403,8 @@ async function loadHistory() {
     }
 }
 
-function loadFromHistory(jobId, files) {
-    showPreview(jobId, files);
+function loadFromHistory(jobId, files, stats) {
+    showPreview(jobId, files, stats);
     document.getElementById('progress-section').classList.add('hidden');
     document.getElementById('error-section').classList.add('hidden');
 }
@@ -314,6 +467,23 @@ async function copyResearchPrompt() {
         setTimeout(() => { btn.textContent = original; }, 1500);
     }
 }
+
+// Paste an image straight from the clipboard (Ctrl+V anywhere)
+document.addEventListener('paste', (e) => {
+    if (document.getElementById('app').classList.contains('hidden')) return;
+    const items = (e.clipboardData || {}).items || [];
+    for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+            const blob = item.getAsFile();
+            if (blob) {
+                const ext = (item.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+                handleFile(new File([blob], `pasted.${ext}`, { type: item.type }));
+                e.preventDefault();
+            }
+            return;
+        }
+    }
+});
 
 document.addEventListener('click', (e) => {
     if (!e.target.classList || !e.target.classList.contains('ph-copy')) return;

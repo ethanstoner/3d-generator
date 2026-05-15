@@ -44,6 +44,17 @@ h1 {
     margin-bottom: 0;
 }
 
+.site-logo {
+    display: block;
+    height: 34px;
+    width: auto;
+}
+
+.site-logo-lg {
+    height: 52px;
+    margin-bottom: 12px;
+}
+
 /* GPU Status */
 .status-dot {
     display: flex;
@@ -176,10 +187,12 @@ button:disabled {
     background: #000;
     border-radius: 2px;
     width: 0%;
-    transition: width 0.3s ease;
+    /* Glide across the ~2s poll interval instead of snapping every update */
+    transition: width 1.8s linear;
 }
 
 .progress-fill.pulsing {
+    transition: none;
     width: 100% !important;
     opacity: 0.15;
     animation: pulse 1.5s ease-in-out infinite;
@@ -287,11 +300,183 @@ model-viewer {
     opacity: 0.8;
 }
 
+.model-stats {
+    text-align: center;
+    font-size: 12px;
+    color: #888;
+    /* viewer above already has 16px bottom margin; this spaces it from the
+       download button below so it never crowds into it */
+    margin: 0 0 16px;
+}
+
+.retry-btn {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-family: inherit;
+    font-weight: 500;
+    background: #000;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    transition: opacity 0.15s;
+    cursor: pointer;
+}
+
+.retry-btn:hover {
+    opacity: 0.8;
+}
+
 /* History Icon */
 .subtitle {
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+/* What's New — fixed in the top-left corner, out of the content flow */
+.whatsnew-fab {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 100;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 999px;
+    color: #888;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.whatsnew-fab:hover {
+    color: #000;
+    border-color: #999;
+}
+
+/* Shared modal — fixed, on top of everything, never shifts page layout */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: modal-fade 0.15s ease;
+}
+
+@keyframes modal-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-popup {
+    background: #fff;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 460px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.modal-popup.wide {
+    max-width: 560px;
+}
+
+.modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+    font-weight: 600;
+    color: #000;
+}
+
+.modal-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.modal-icon-btn {
+    background: none;
+    border: none;
+    color: #bbb;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    transition: color 0.15s;
+}
+
+.modal-icon-btn:hover,
+.modal-icon-btn.active {
+    color: #000;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: #999;
+    cursor: pointer;
+    padding: 0 4px;
+    transition: color 0.15s;
+}
+
+.modal-close:hover {
+    color: #000;
+}
+
+.modal-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+}
+
+.whatsnew-entry {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+}
+
+.modal-body .whatsnew-entry:last-child {
+    margin-bottom: 0;
+}
+
+.whatsnew-date {
+    font-size: 12px;
+    font-weight: 500;
+    color: #999;
+    text-transform: lowercase;
+    margin-bottom: 6px;
+}
+
+.whatsnew-entry ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.whatsnew-entry li {
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+    margin-bottom: 3px;
+}
+
+.whatsnew-entry li:last-child {
+    margin-bottom: 0;
 }
 
 .history-icon {
@@ -428,32 +613,27 @@ model-viewer {
 }
 
 /* Prompt Helper */
-.prompt-helper {
+.prompt-helper-trigger {
+    width: 100%;
     margin-bottom: 16px;
+    padding: 10px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    text-align: left;
+    color: #666;
+    background: #fafafa;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
-    background: #fafafa;
-}
-
-.prompt-helper > summary {
-    padding: 10px 14px;
-    font-size: 13px;
-    color: #666;
     cursor: pointer;
-    user-select: none;
-    list-style: none;
+    transition: color 0.15s, border-color 0.15s;
 }
 
-.prompt-helper > summary:hover {
+.prompt-helper-trigger:hover {
     color: #000;
-}
-
-.prompt-helper > summary::-webkit-details-marker {
-    display: none;
+    border-color: #999;
 }
 
 .prompt-helper-body {
-    padding: 0 14px 14px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -580,6 +760,79 @@ model-viewer {
 .ph-hint {
     font-size: 11px;
     color: #999;
+}
+
+/* Prompt-help history */
+.ph-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ph-hist-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+
+.ph-hist-item:hover {
+    border-color: #999;
+}
+
+.ph-hist-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.ph-hist-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ph-hist-idea {
+    font-size: 12px;
+    color: #777;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+
+.ph-hist-date {
+    font-size: 11px;
+    color: #aaa;
+    margin-top: 4px;
+}
+
+.ph-hist-del {
+    background: none;
+    border: none;
+    color: #ccc;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+    transition: color 0.15s;
+}
+
+.ph-hist-del:hover {
+    color: #cc0000;
+}
+
+.ph-hist-empty {
+    font-size: 13px;
+    color: #999;
+    text-align: center;
+    padding: 24px 0;
 }
 
 /* Utility */
