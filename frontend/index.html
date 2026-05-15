@@ -7,7 +7,7 @@
     <link rel="icon" href="/favicon.ico?v=2" sizes="any">
     <link rel="icon" type="image/png" href="/favicon.png?v=2">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
-    <link rel="stylesheet" href="/style.css?v=17">
+    <link rel="stylesheet" href="/style.css?v=19">
     <script type="module" src="/vendor/model-viewer.min.js"></script>
 </head>
 <body>
@@ -15,10 +15,11 @@
     <main id="auth-gate">
         <img class="site-logo site-logo-lg" src="/logo.png" alt="3d generator">
         <p class="subtitle">enter password to continue</p>
-        <div class="input-group">
-            <input type="password" id="password-input" placeholder="password" autocomplete="off">
-            <button id="auth-btn" onclick="authenticate()">enter</button>
-        </div>
+        <form class="input-group" onsubmit="authenticate(); return false;">
+            <input type="text" autocomplete="username" value="friend" hidden aria-hidden="true" tabindex="-1">
+            <input type="password" id="password-input" placeholder="password" autocomplete="current-password">
+            <button type="submit" id="auth-btn">enter</button>
+        </form>
         <p id="auth-error" class="error-text hidden"></p>
     </main>
 
@@ -197,6 +198,6 @@
         <div id="history-list" class="history-list hidden"></div>
     </main>
 
-    <script src="/app.js?v=17"></script>
+    <script src="/app.js?v=19"></script>
 </body>
 </html>
