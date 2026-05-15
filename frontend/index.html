@@ -7,7 +7,7 @@
     <link rel="icon" href="/favicon.ico?v=2" sizes="any">
     <link rel="icon" type="image/png" href="/favicon.png?v=2">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
-    <link rel="stylesheet" href="/style.css?v=15">
+    <link rel="stylesheet" href="/style.css?v=17">
     <script type="module" src="/vendor/model-viewer.min.js"></script>
 </head>
 <body>
@@ -52,6 +52,7 @@
                         <div class="whatsnew-date">may 15</div>
                         <ul>
                             <li>fresh logo & app icon</li>
+                            <li>"name this item" — one click reads your image with a vision AI and writes a Roblox-style name & description</li>
                             <li>models load way faster — first view used to take ~5s, now it's basically instant, and reopening past models is instant too</li>
                             <li>paste an image straight from your clipboard with Ctrl+V (no need to save it first)</li>
                             <li>every model now shows its triangle count, file size, and how long it took</li>
@@ -179,6 +180,16 @@
             </div>
 
             <p id="model-stats" class="model-stats hidden"></p>
+
+            <div id="name-section" class="name-section">
+                <button type="button" id="name-btn" onclick="nameItem()">✨ name this item</button>
+                <div id="name-result" class="ph-result hidden">
+                    <div class="ph-card"><label>name</label><div class="ph-value" id="item-name"></div><button class="ph-copy" data-target="item-name">copy</button></div>
+                    <div class="ph-card"><label>description</label><div class="ph-value" id="item-description"></div><button class="ph-copy" data-target="item-description">copy</button></div>
+                </div>
+                <p id="name-error" class="ph-error hidden"></p>
+            </div>
+
             <a id="download-btn" class="download-btn">download zip</a>
         </div>
 
@@ -186,6 +197,6 @@
         <div id="history-list" class="history-list hidden"></div>
     </main>
 
-    <script src="/app.js?v=15"></script>
+    <script src="/app.js?v=17"></script>
 </body>
 </html>

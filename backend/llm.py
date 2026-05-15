@@ -6,6 +6,7 @@ import httpx
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11435")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+OLLAMA_VISION_MODEL = os.getenv("OLLAMA_VISION_MODEL", "llama3.2-vision:11b")
 RULES_FILE = Path(__file__).parent.parent / "CLAUDE.md"
 
 
@@ -121,6 +122,68 @@ async def refine_idea(idea: str) -> dict:
         "name": parsed["name"].strip(),
         "description": parsed["description"].strip(),
         "image_prompt": parsed["image_prompt"].strip(),
+    }
+
+
+DESCRIBE_SYSTEM_PROMPT = f"""You are a product copywriter for a Roblox UGC store. You will be shown an IMAGE of a single toy/plush/figurine that has been turned into a 3D backpack accessory.
+
+Look at the image, identify the character/subject (and its franchise if recognizable), then return a JSON object with exactly two fields and nothing else (no markdown, no commentary):
+
+{{
+  "name": "<catchy Roblox marketplace name for this item, max 50 chars>",
+  "description": "<one short line with exactly one emoji, ending with this exact text: More: https://www.roblox.com/communities/33808534/kirq#!/store>"
+}}
+
+Base the name and description ONLY on what is actually visible in the image. Be specific about the character; do not invent details you cannot see.
+
+Examples of the expected name/description style:
+- {{"name": "Chubby Capybara Plush", "description": "\U0001f9a6 cozy capybara backpack with a tiny duck friend - More: https://www.roblox.com/communities/33808534/kirq#!/store"}}
+- {{"name": "Labubu x Hello Kitty", "description": "\U0001f380 Labubu in a Hello Kitty costume - More: https://www.roblox.com/communities/33808534/kirq#!/store"}}
+- {{"name": "Tung Tung Tung Sahur", "description": "\U0001fab5 the angry log brainrot icon - More: https://www.roblox.com/communities/33808534/kirq#!/store"}}
+
+Context on what these items are:
+
+{BACKPACK_RULES}
+"""
+
+
+async def describe_image(image_b64: str) -> dict:
+    """Call the Ollama vision model with a base64 image, return {name, description}.
+    Raises RuntimeError on connection/parse failure."""
+    payload = {
+        "model": OLLAMA_VISION_MODEL,
+        "messages": [
+            {"role": "system", "content": DESCRIBE_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": "Name and describe this item for the Roblox store.",
+                "images": [image_b64],
+            },
+        ],
+        "format": "json",
+        "stream": False,
+        "keep_alive": 0,  # unload vision model after response so VRAM frees for ComfyUI
+        "options": {"temperature": 0.6},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            r = await client.post(f"{OLLAMA_URL}/api/chat", json=payload)
+            r.raise_for_status()
+            content = r.json()["message"]["content"]
+    except httpx.ConnectError as e:
+        raise RuntimeError("ollama not reachable — is it running? try: ollama serve") from e
+    except httpx.HTTPStatusError as e:
+        raise RuntimeError(f"ollama returned {e.response.status_code}") from e
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"vision model returned non-JSON: {content[:200]}") from e
+    for key in ("name", "description"):
+        if key not in parsed or not isinstance(parsed[key], str) or not parsed[key].strip():
+            raise RuntimeError(f"missing/empty field in response: {key}")
+    return {
+        "name": parsed["name"].strip()[:80],
+        "description": parsed["description"].strip(),
     }
 
 

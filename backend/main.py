@@ -7,6 +7,7 @@ import random
 import asyncio
 import zipfile
 import io
+import base64
 import httpx
 from pathlib import Path
 
@@ -68,6 +69,14 @@ def save_history(history: list[dict]):
 def append_history(entry: dict):
     history = load_history()
     history.insert(0, entry)  # newest first
+    save_history(history)
+
+def update_history(job_id: str, fields: dict):
+    history = load_history()
+    for entry in history:
+        if entry.get("job_id") == job_id:
+            entry.update(fields)
+            break
     save_history(history)
 
 
@@ -274,6 +283,12 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int
     job_dir = JOBS_DIR / job_id
     job["started_at"] = time.time()
     try:
+        # Persist the input image so it can be named/described later (incl. from history)
+        in_ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"
+        if in_ext not in ("png", "jpg", "jpeg", "webp"):
+            in_ext = "png"
+        (job_dir / f"input.{in_ext}").write_bytes(file_bytes)
+
         # Upload image to ComfyUI
         job["stage"] = "uploading image"
         comfy_filename = await comfyui.upload_image(file_bytes, filename)
@@ -436,6 +451,8 @@ async def get_job(job_id: str, request: Request):
         "triangles": job.get("triangles"),
         "size": size,
         "duration": duration,
+        "name": job.get("name"),
+        "description": job.get("description"),
     }
 
 
@@ -482,6 +499,35 @@ async def download_zip(job_id: str, request: Request):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename=3d-model-{job_id}.zip"},
     )
+
+
+@app.post("/api/jobs/{job_id}/name")
+async def name_item(job_id: str, request: Request):
+    check_auth(request)
+    if not await comfyui.is_online():
+        raise HTTPException(503, detail="gpu is offline")
+    job_dir = JOBS_DIR / job_id
+    inputs = sorted(job_dir.glob("input.*")) if job_dir.exists() else []
+    if not inputs:
+        raise HTTPException(404, detail="no input image saved for this item (older generation)")
+    image_b64 = base64.b64encode(inputs[0].read_bytes()).decode()
+
+    try:
+        await asyncio.wait_for(gpu_lock.acquire(), timeout=PROMPT_HELP_LOCK_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(503, detail="gpu busy with a 3d generation, try again in a moment")
+    try:
+        result = await llm.describe_image(image_b64)
+    except RuntimeError as e:
+        raise HTTPException(503, detail=str(e))
+    finally:
+        gpu_lock.release()
+
+    if job_id in jobs:
+        jobs[job_id]["name"] = result["name"]
+        jobs[job_id]["description"] = result["description"]
+    update_history(job_id, {"name": result["name"], "description": result["description"]})
+    return result
 
 
 @app.get("/api/history")
