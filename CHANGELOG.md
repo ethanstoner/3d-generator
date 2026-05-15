@@ -32,6 +32,13 @@ All notable changes to this project. Dates are when the change went live on
 - Progress bar glides across the 2s poll interval instead of snapping.
 
 ### Fixed
+- **History delete now reliably removes files from the server.** Dropped
+  `rmtree(ignore_errors=True)` so a failed delete surfaces instead of
+  silently leaving orphaned files while removing the entry from the UI;
+  files are deleted before the history entry so the site and disk never
+  drift apart. Failed generations now clean up their own folder, and a
+  startup sweep removes empty orphan job folders (non-empty untracked
+  folders are kept and logged, never auto-destroyed).
 - **Live site "gpu offline" while local worked.** The Linux backend hardcoded
   the Windows GPU box's DHCP-assigned LAN IP, which silently broke on a lease
   change. Now addressed by stable hostname (`jeffy`) so DHCP changes no longer

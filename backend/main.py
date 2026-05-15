@@ -131,7 +131,32 @@ async def queue_worker():
 @app.on_event("startup")
 async def startup():
     JOBS_DIR.mkdir(exist_ok=True)
+    _sweep_orphan_job_dirs()
     asyncio.create_task(queue_worker())
+
+
+def _sweep_orphan_job_dirs():
+    """Remove EMPTY orphan job folders (left by failed/aborted generations or
+    server restarts) that aren't referenced in history.json, so the box stays
+    in sync with the site. Non-empty untracked folders are kept and logged —
+    real model data is never auto-destroyed."""
+    try:
+        ids = {h.get("job_id") for h in load_history()}
+    except Exception:
+        return
+    for d in JOBS_DIR.iterdir():
+        if not d.is_dir() or d.name.startswith(".") or d.name in ids:
+            continue
+        try:
+            if any(d.iterdir()):
+                n = sum(1 for _ in d.iterdir())
+                print(f"[sweep] kept untracked job dir {d.name} "
+                      f"({n} file(s)) — not in history, not empty")
+            else:
+                d.rmdir()
+                print(f"[sweep] removed empty orphan job dir: {d.name}")
+        except OSError as e:
+            print(f"[sweep] could not process {d.name}: {e}")
 
 
 # --- Auth helpers ---
@@ -426,6 +451,9 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int
         job["status"] = "failed"
         job["error"] = str(e)
         job["stage"] = "failed"
+        # A failed job never gets a history entry, so its folder would be an
+        # unreachable orphan on the box. Clean it up at the source.
+        shutil.rmtree(job_dir, ignore_errors=True)
 
 
 @app.get("/api/jobs/{job_id}")
@@ -546,11 +574,16 @@ async def get_history_endpoint(request: Request):
 @app.delete("/api/history/{job_id}")
 async def delete_history_entry(job_id: str, request: Request):
     check_auth(request)
-    # Remove files
+    # Delete the files on disk FIRST. If this fails, surface the error and
+    # keep the history entry — never leave the site and the box out of sync
+    # (i.e. entry gone from the UI but files still on the server).
     job_dir = JOBS_DIR / job_id
     if job_dir.exists():
-        shutil.rmtree(job_dir, ignore_errors=True)
-    # Remove from history
+        try:
+            shutil.rmtree(job_dir)
+        except OSError as e:
+            raise HTTPException(500, detail=f"could not delete files on server: {e}")
+    # Files are gone — now drop the history entry
     history = load_history()
     history = [h for h in history if h["job_id"] != job_id]
     save_history(history)
