@@ -7,6 +7,14 @@ All notable changes to this project. Dates are when the change went live on
 ## 2026-05-15
 
 ### Added
+- **AI item naming** — a "name this item" button runs the input image through
+  a local vision model (`llama3.2-vision:11b`, on-demand, under the shared GPU
+  lock) and returns a Roblox-style name + description. Input images are now
+  persisted per job so items can be (re)named later, including from history.
+  `POST /api/jobs/{id}/name`.
+- **Prompt-help history** — successful prompt-help results are saved server-side
+  (shared, capped at 50) and browsable from the prompt-help modal.
+  `GET/DELETE /api/prompt-history`.
 - **Model stats line** — every result shows triangle count, file size, and
   generation time under the viewer (live generations and new history entries).
 - **Paste-from-clipboard** — Ctrl+V an image anywhere on the page to load it.
