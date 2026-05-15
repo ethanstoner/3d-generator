@@ -9,7 +9,8 @@ Built so a couple of friends could drop in an image, watch real-time progress, a
 ## What it does
 
 - **Image → 3D model** — upload PNG / JPG / WEBP (or paste from clipboard), get back a textured GLB, an untextured GLB, and the raw texture map (PNG)
-- **Prompt helper** — describe a rough idea and get a polished name / description / image-generation prompt back from a local Ollama model, built to the project's backpack/UGC generation rules; plus a one-click "research prompt" preset to paste into Claude / ChatGPT / Gemini with web search
+- **Prompt helper** — describe a rough idea and get a polished name / description / image-generation prompt back from a local Ollama model, built to the project's backpack/UGC generation rules; plus a one-click "research prompt" preset to paste into Claude / ChatGPT / Gemini with web search. Past results are saved to a shared, browsable history.
+- **AI item naming** — one click runs the input image through a local vision model (`llama3.2-vision:11b`) and returns a ready-to-paste Roblox marketplace name + description
 - **Triangle count presets** — pick mesh density (4k / 10k / 20k / 40k); the choice persists and shows as a badge in history
 - **Model stats** — every result shows triangle count, file size, and generation time
 - **Live GPU status** — the frontend pings the backend, which pings the GPU host; the dot in the header goes green when the rig is reachable, red when it's offline (powered down, network issue, ComfyUI restarting). The Generate button auto-disables when offline so users don't queue jobs that can't run.
@@ -83,6 +84,8 @@ Open `http://localhost:8090`. ComfyUI must be running with the Hunyuan3D 2.1 cus
 | `GET` | `/api/check-auth` | Check existing session |
 | `GET` | `/api/status` | ComfyUI online check |
 | `POST` | `/api/prompt-help` | Refine a rough idea into name / description / image prompt (Ollama) |
+| `GET` `DELETE` | `/api/prompt-history` `/api/prompt-history/{id}` | Shared prompt-help history |
+| `POST` | `/api/jobs/{id}/name` | Name + describe an item from its input image (Ollama vision) |
 | `GET` | `/api/research-prompt` | Static research-prompt preset to paste into an LLM |
 | `POST` | `/api/generate` | Submit image + triangle count, returns `job_id` |
 | `GET` | `/api/jobs/{id}` | Poll status, progress, stage, queue position, model stats |
