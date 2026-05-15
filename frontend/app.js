@@ -47,10 +47,6 @@ function showApp() {
     selectTriangles(selectedTriangles);
 }
 
-document.getElementById('password-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') authenticate();
-});
-
 // Check existing session on load
 (async () => {
     try {
