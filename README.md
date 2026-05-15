@@ -20,9 +20,9 @@ Built so a couple of friends could drop in an image, watch real-time progress, a
 - **Three preview tabs** — textured model, untextured mesh, and the standalone texture map, all rendered in-browser with Google's `<model-viewer>` web component.
 - **Shared-password auth** — signed cookie via `itsdangerous`, 7-day session.
 
-| password gate | finished generation |
-| --- | --- |
-| ![homepage](docs/screenshots/homepage.png) | ![past generation](docs/screenshots/past-generation.png) |
+| password gate | prompt helper (local LLM) | finished model + AI naming |
+| --- | --- | --- |
+| ![password gate](docs/screenshots/homepage.png) | ![prompt helper](docs/screenshots/prompt-helper.png) | ![finished generation](docs/screenshots/past-generation.png) |
 
 ## Architecture
 
