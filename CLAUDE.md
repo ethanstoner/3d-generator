@@ -58,11 +58,12 @@ OLLAMA_MODEL=llama3.2:3b              # optional; defaults to this
 
 Live site: **https://qorlyt.com/** (Cloudflare Tunnel → Linux box `192.168.1.169:8090`).
 
-The Linux backend reaches ComfyUI and Ollama on the Windows PC over the LAN at `192.168.1.83`. Linux `.env` has:
+The Linux backend reaches ComfyUI and Ollama on the Windows PC over the LAN by **hostname**, not IP — the Windows PC's IP is DHCP-assigned and a lease change (e.g. `.83`→`.84`) silently breaks the live site ("gpu offline" on qorlyt.com while local works fine). The router's DNS keeps the hostname (`jeffy`) → IP mapping current across lease changes. Linux `.env` has:
 ```
-COMFYUI_URL=http://192.168.1.83:8188
-OLLAMA_URL=http://192.168.1.83:11435
+COMFYUI_URL=http://jeffy:8188
+OLLAMA_URL=http://jeffy:11435
 ```
+If `jeffy` ever stops resolving from the Linux box, fall back to the current LAN IP (find it on Windows with `Get-NetIPAddress -AddressFamily IPv4`) and update both URLs.
 
 **Deploy code change to live:**
 ```bash
