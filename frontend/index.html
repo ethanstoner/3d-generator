@@ -4,13 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3d generator</title>
-    <link rel="stylesheet" href="/style.css?v=8">
-    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    <link rel="icon" href="/favicon.ico?v=2" sizes="any">
+    <link rel="icon" type="image/png" href="/favicon.png?v=2">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+    <link rel="stylesheet" href="/style.css?v=15">
+    <script type="module" src="/vendor/model-viewer.min.js"></script>
 </head>
 <body>
     <!-- Password Gate -->
     <main id="auth-gate">
-        <h1>3d generator</h1>
+        <img class="site-logo site-logo-lg" src="/logo.png" alt="3d generator">
         <p class="subtitle">enter password to continue</p>
         <div class="input-group">
             <input type="password" id="password-input" placeholder="password" autocomplete="off">
@@ -22,7 +25,7 @@
     <!-- Main App -->
     <main id="app" class="hidden">
         <div class="header-row">
-            <h1>3d generator</h1>
+            <img class="site-logo" src="/logo.png" alt="3d generator">
             <div id="gpu-status" class="status-dot offline">
                 <span class="dot"></span>
                 <span id="gpu-status-text">checking...</span>
@@ -33,6 +36,56 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
             </button>
         </p>
+
+        <!-- Fixed, out-of-the-way changelog trigger (top-left corner) -->
+        <button class="whatsnew-fab" onclick="toggleWhatsNew()" title="what's new">what's new</button>
+
+        <!-- What's New (modal popup, floats in front of everything) -->
+        <div id="whatsnew-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeWhatsNew()">
+            <div class="modal-popup" role="dialog" aria-modal="true" aria-label="what's new">
+                <div class="modal-head">
+                    <span>what's new</span>
+                    <button class="modal-close" onclick="closeWhatsNew()" aria-label="close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="whatsnew-entry">
+                        <div class="whatsnew-date">may 15</div>
+                        <ul>
+                            <li>fresh logo & app icon</li>
+                            <li>models load way faster — first view used to take ~5s, now it's basically instant, and reopening past models is instant too</li>
+                            <li>paste an image straight from your clipboard with Ctrl+V (no need to save it first)</li>
+                            <li>every model now shows its triangle count, file size, and how long it took</li>
+                            <li>smoother progress bar while you wait</li>
+                            <li>"try again" button if a generation fails — no need to re-pick the image</li>
+                            <li>prompt help & what's new are clean popups now (no more pushing the page around); what's new tucks into the corner out of the way</li>
+                            <li>prompt help keeps a history — reopen or copy any past result, shared with everyone</li>
+                            <li>fixed the site sometimes showing "gpu offline" when the gpu was actually up</li>
+                        </ul>
+                    </div>
+                    <div class="whatsnew-entry">
+                        <div class="whatsnew-date">may 14</div>
+                        <ul>
+                            <li>prompt helper — type a rough idea, get a polished prompt to paste into ChatGPT / Gemini / Claude</li>
+                            <li>"research prompt" preset — one click to get an LLM hunting for trending backpack ideas</li>
+                            <li>pick model detail: 4k / 10k / 20k / 40k triangles</li>
+                        </ul>
+                    </div>
+                    <div class="whatsnew-entry">
+                        <div class="whatsnew-date">may 13</div>
+                        <ul>
+                            <li>history — re-open any past generation or download it again later</li>
+                            <li>queue — multiple friends can submit at once and see their position</li>
+                        </ul>
+                    </div>
+                    <div class="whatsnew-entry">
+                        <div class="whatsnew-date">may 12</div>
+                        <ul>
+                            <li>launch: upload an image, get a downloadable 3d model</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Upload Area -->
         <div id="upload-area" class="upload-area" onclick="document.getElementById('file-input').click()">
@@ -50,10 +103,22 @@
             <button type="button" class="preset-chip" data-value="40000" onclick="selectTriangles(40000)">40k</button>
         </div>
 
-        <details class="prompt-helper">
-            <summary>💡 prompt help</summary>
-            <div class="prompt-helper-body">
-                <div class="ph-section">
+        <button type="button" class="prompt-helper-trigger" onclick="openPromptHelper()">💡 prompt help</button>
+
+        <div id="prompthelp-modal" class="modal-overlay hidden" onclick="if(event.target===this)closePromptHelper()">
+            <div class="modal-popup wide" role="dialog" aria-modal="true" aria-label="prompt help">
+                <div class="modal-head">
+                    <span>💡 prompt help</span>
+                    <div class="modal-head-actions">
+                        <button class="modal-icon-btn" id="ph-hist-toggle" onclick="togglePromptHistory()" title="history">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+                        </button>
+                        <button class="modal-close" onclick="closePromptHelper()" aria-label="close">&times;</button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                  <div class="prompt-helper-body" id="ph-main">
+                    <div class="ph-section">
                     <label class="ph-label">refine an idea</label>
                     <textarea id="ph-idea" rows="2" maxlength="200" placeholder='describe what you want (e.g. "labubu in santa hat")'></textarea>
                     <button type="button" id="ph-refine-btn" onclick="refinePrompt()">generate prompts</button>
@@ -69,8 +134,13 @@
                     <button type="button" id="ph-research-btn" onclick="copyResearchPrompt()">copy research prompt</button>
                     <p class="ph-hint">paste into Claude / ChatGPT / Gemini with web search enabled — it researches trends and proposes ideas</p>
                 </div>
+                  </div>
+                  <div id="ph-history-panel" class="hidden">
+                      <div id="ph-history-list" class="ph-history-list"></div>
+                  </div>
+                </div>
             </div>
-        </details>
+        </div>
 
         <button id="generate-btn" onclick="startGeneration()" disabled>generate</button>
 
@@ -85,6 +155,7 @@
         <!-- Error -->
         <div id="error-section" class="hidden">
             <p id="error-text" class="error-text"></p>
+            <button id="retry-btn" class="retry-btn" onclick="retryGeneration()">try again</button>
         </div>
 
         <!-- Preview -->
@@ -107,6 +178,7 @@
                 <img id="texture-image" class="texture-image" alt="texture map">
             </div>
 
+            <p id="model-stats" class="model-stats hidden"></p>
             <a id="download-btn" class="download-btn">download zip</a>
         </div>
 
@@ -114,6 +186,6 @@
         <div id="history-list" class="history-list hidden"></div>
     </main>
 
-    <script src="/app.js?v=8"></script>
+    <script src="/app.js?v=15"></script>
 </body>
 </html>
