@@ -169,6 +169,8 @@ async function pollJob() {
                 triangles: data.triangles,
                 size: data.size,
                 duration: data.duration,
+                name: data.name,
+                description: data.description,
             });
             activeJobId = null;
             updateGenerateButton();
@@ -221,7 +223,53 @@ function showPreview(jobId, files, stats) {
     }
     document.getElementById('download-btn').href = `/api/jobs/${jobId}/download`;
     renderModelStats(stats);
+    renderNameSection(stats);
     switchTab('textured');
+}
+
+// Shows the existing name/description if this item already has one (e.g. from
+// history), otherwise resets to the "name this item" button.
+function renderNameSection(stats) {
+    const result = document.getElementById('name-result');
+    const btn = document.getElementById('name-btn');
+    document.getElementById('name-error').classList.add('hidden');
+    btn.disabled = !gpuOnline;
+    btn.textContent = '✨ name this item';
+    if (stats && stats.name && stats.description) {
+        document.getElementById('item-name').textContent = stats.name;
+        document.getElementById('item-description').textContent = stats.description;
+        result.classList.remove('hidden');
+        btn.textContent = '✨ regenerate name';
+    } else {
+        result.classList.add('hidden');
+    }
+}
+
+async function nameItem() {
+    if (!preview.jobId) return;
+    const btn = document.getElementById('name-btn');
+    const errEl = document.getElementById('name-error');
+    errEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = 'analyzing image…';
+    try {
+        const r = await fetch(`/api/jobs/${preview.jobId}/name`, { method: 'POST' });
+        if (!r.ok) {
+            const d = await r.json().catch(() => ({}));
+            throw new Error(d.detail || 'request failed');
+        }
+        const data = await r.json();
+        document.getElementById('item-name').textContent = data.name;
+        document.getElementById('item-description').textContent = data.description;
+        document.getElementById('name-result').classList.remove('hidden');
+        btn.textContent = '✨ regenerate name';
+    } catch (e) {
+        errEl.textContent = e.message;
+        errEl.classList.remove('hidden');
+        btn.textContent = '✨ name this item';
+    } finally {
+        btn.disabled = !gpuOnline;
+    }
 }
 
 function renderModelStats(stats) {
@@ -388,7 +436,7 @@ async function loadHistory() {
                 : '';
             const triBadge = triLabel ? `<span class="history-tris">${triLabel}</span>` : '';
             const hasThumb = item.files && item.files.includes('texture.png');
-            const stats = JSON.stringify({ triangles: item.triangles, size: item.size, duration: item.duration }).replace(/"/g, '&quot;');
+            const stats = JSON.stringify({ triangles: item.triangles, size: item.size, duration: item.duration, name: item.name, description: item.description }).replace(/"/g, '&quot;');
             return `<div class="history-item" onclick="loadFromHistory('${item.job_id}', ${JSON.stringify(item.files).replace(/"/g, '&quot;')}, ${stats})">
                 ${hasThumb ? `<img class="history-thumb" src="/api/jobs/${item.job_id}/files/texture.png" alt="">` : '<div class="history-thumb"></div>'}
                 <div class="history-info">

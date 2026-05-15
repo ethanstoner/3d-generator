@@ -309,6 +309,39 @@ model-viewer {
     margin: 0 0 16px;
 }
 
+.name-section {
+    margin-bottom: 16px;
+}
+
+#name-btn {
+    width: 100%;
+    padding: 10px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    background: #fff;
+    color: #000;
+    border: 1px solid #000;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+#name-btn:hover:not(:disabled) {
+    background: #000;
+    color: #fff;
+}
+
+#name-btn:disabled {
+    color: #999;
+    border-color: #e0e0e0;
+    cursor: not-allowed;
+}
+
+#name-result {
+    margin-top: 12px;
+}
+
 .retry-btn {
     display: inline-block;
     margin-top: 12px;
