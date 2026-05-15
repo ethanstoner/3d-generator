@@ -71,6 +71,28 @@ def append_history(entry: dict):
     save_history(history)
 
 
+# --- Prompt-help history (shared, persistent JSON file) ---
+PROMPT_HISTORY_FILE = JOBS_DIR / "prompt_history.json"
+PROMPT_HISTORY_MAX = 50
+
+def load_prompt_history() -> list[dict]:
+    if PROMPT_HISTORY_FILE.exists():
+        try:
+            return json.loads(PROMPT_HISTORY_FILE.read_text())
+        except Exception:
+            return []
+    return []
+
+def save_prompt_history(history: list[dict]):
+    PROMPT_HISTORY_FILE.write_text(json.dumps(history, indent=2))
+
+def append_prompt_history(entry: dict):
+    history = load_prompt_history()
+    history.insert(0, entry)  # newest first
+    del history[PROMPT_HISTORY_MAX:]  # cap growth
+    save_prompt_history(history)
+
+
 # --- Queue Worker ---
 async def queue_worker():
     """Process jobs one at a time from the queue."""
@@ -153,11 +175,35 @@ async def prompt_help(request: Request, body: PromptHelpRequest):
     except asyncio.TimeoutError:
         raise HTTPException(503, detail="gpu busy with a 3d generation, try again in a moment")
     try:
-        return await llm.refine_idea(idea)
+        result = await llm.refine_idea(idea)
     except RuntimeError as e:
         raise HTTPException(503, detail=str(e))
     finally:
         gpu_lock.release()
+
+    append_prompt_history({
+        "id": uuid.uuid4().hex[:8],
+        "timestamp": int(time.time()),
+        "idea": idea,
+        "name": result.get("name", ""),
+        "description": result.get("description", ""),
+        "image_prompt": result.get("image_prompt", ""),
+    })
+    return result
+
+
+@app.get("/api/prompt-history")
+async def get_prompt_history(request: Request):
+    check_auth(request)
+    return load_prompt_history()
+
+
+@app.delete("/api/prompt-history/{entry_id}")
+async def delete_prompt_history(entry_id: str, request: Request):
+    check_auth(request)
+    history = load_prompt_history()
+    save_prompt_history([h for h in history if h.get("id") != entry_id])
+    return {"ok": True}
 
 
 @app.get("/api/research-prompt")
@@ -213,6 +259,9 @@ async def generate(
         "error": None,
         "files": [],
         "queue_position": position,
+        "triangles": triangles,
+        "started_at": None,
+        "finished_at": None,
     }
 
     # Add to queue (worker processes one at a time)
@@ -223,6 +272,7 @@ async def generate(
 async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int):
     job = jobs[job_id]
     job_dir = JOBS_DIR / job_id
+    job["started_at"] = time.time()
     try:
         # Upload image to ComfyUI
         job["stage"] = "uploading image"
@@ -336,6 +386,15 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int
         job["progress"] = 1.0
         job["stage"] = "done"
         job["files"] = collected_files
+        job["finished_at"] = time.time()
+
+        textured_path = job_dir / "textured.glb"
+        size = textured_path.stat().st_size if textured_path.exists() else None
+        duration = (
+            round(job["finished_at"] - job["started_at"])
+            if job.get("started_at")
+            else None
+        )
 
         # Save to persistent history
         append_history({
@@ -344,6 +403,8 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int
             "filename": filename,
             "files": collected_files,
             "triangles": triangles,
+            "size": size,
+            "duration": duration,
         })
 
     except Exception as e:
@@ -358,6 +419,11 @@ async def get_job(job_id: str, request: Request):
     job = jobs.get(job_id)
     if not job:
         raise HTTPException(404, detail="job not found")
+    duration = None
+    if job.get("started_at") and job.get("finished_at"):
+        duration = round(job["finished_at"] - job["started_at"])
+    textured_path = JOBS_DIR / job_id / "textured.glb"
+    size = textured_path.stat().st_size if textured_path.exists() else None
     return {
         "status": job["status"],
         "progress": job["progress"],
@@ -367,6 +433,9 @@ async def get_job(job_id: str, request: Request):
         "files": job["files"],
         "error": job["error"],
         "queue_position": job.get("queue_position", 0),
+        "triangles": job.get("triangles"),
+        "size": size,
+        "duration": duration,
     }
 
 
@@ -379,7 +448,14 @@ async def get_file(job_id: str, filename: str, request: Request):
     if not path.exists():
         raise HTTPException(404, detail="file not found")
     media = "model/gltf-binary" if filename.endswith(".glb") else "image/png"
-    return FileResponse(path, media_type=media, filename=filename)
+    # Per-job files never change once written — let the browser cache them
+    # hard so re-viewing a model or browsing history is instant.
+    return FileResponse(
+        path,
+        media_type=media,
+        filename=filename,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @app.get("/api/jobs/{job_id}/download")
@@ -442,7 +518,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 class NoCacheStaticMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
-        if request.url.path.endswith((".html", ".js", ".css")) or request.url.path == "/":
+        path = request.url.path
+        # Vendored third-party libs are version-pinned and large — cache hard
+        # so the ~1 MB model-viewer isn't re-fetched every session.
+        if path.startswith("/vendor/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif path.endswith((".html", ".js", ".css")) or path == "/":
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["CDN-Cache-Control"] = "no-cache"
         return response
