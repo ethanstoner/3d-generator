@@ -176,7 +176,15 @@ async def auth(request: Request, response: Response):
     if body.get("password") != SITE_PASSWORD:
         raise HTTPException(401, detail="invalid password")
     token = signer.dumps({"ok": True})
-    response.set_cookie(COOKIE_NAME, token, httponly=True, samesite="lax", max_age=86400 * 7)
+    # Mark the cookie Secure when the request arrived over HTTPS. Cloudflare
+    # terminates TLS and proxies to us over plain HTTP, so trust its
+    # X-Forwarded-Proto header; fall back to the request scheme for local dev
+    # (http://127.0.0.1, where a Secure cookie would never be sent back).
+    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    response.set_cookie(
+        COOKIE_NAME, token,
+        httponly=True, samesite="lax", secure=secure, max_age=86400 * 7,
+    )
     return {"ok": True}
 
 
