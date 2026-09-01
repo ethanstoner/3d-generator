@@ -7,7 +7,7 @@
     <link rel="icon" href="/favicon.ico?v=2" sizes="any">
     <link rel="icon" type="image/png" href="/favicon.png?v=2">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
-    <link rel="stylesheet" href="/style.css?v=20">
+    <link rel="stylesheet" href="/style.css?v=31">
     <script type="module" src="/vendor/model-viewer.min.js"></script>
 </head>
 <body>
@@ -41,6 +41,35 @@
         <!-- Fixed, out-of-the-way changelog trigger (top-left corner) -->
         <button class="whatsnew-fab" onclick="toggleWhatsNew()" title="what's new">what's new</button>
 
+        <!-- Tutorial & requirements trigger (top-right corner) -->
+        <button class="howto-fab" onclick="toggleHowTo()" title="how to use">how to use</button>
+
+        <!-- How To (modal popup: required plugins + video tutorial) -->
+        <div id="howto-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeHowTo()">
+            <div class="modal-popup" role="dialog" aria-modal="true" aria-label="how to use">
+                <div class="modal-head">
+                    <span>how to use</span>
+                    <button class="modal-close" onclick="closeHowTo()" aria-label="close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="howto-section">
+                        <div class="howto-title">required roblox plugins</div>
+                        <p class="howto-note">install these in Roblox Studio before uploading your model:</p>
+                        <ul class="howto-links">
+                            <li><a href="https://create.roblox.com/store/asset/1602528167/Asset-Creator" target="_blank" rel="noopener">Asset Creator</a></li>
+                            <li><a href="https://create.roblox.com/store/asset/11628621048/UGC-Custom-Thumbnail-Tool" target="_blank" rel="noopener">UGC Custom Thumbnail Tool</a></li>
+                            <li><a href="https://create.roblox.com/store/asset/752585459/Load-Character-Lite" target="_blank" rel="noopener">Load Character Lite</a></li>
+                        </ul>
+                    </div>
+                    <div class="howto-section">
+                        <div class="howto-title">video tutorial</div>
+                        <p class="howto-note">full walkthrough (coming soon):</p>
+                        <a class="howto-tutorial" href="https://www.youtube.com/watch?v=PLACEHOLDER" target="_blank" rel="noopener">▶ watch the tutorial</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- What's New (modal popup, floats in front of everything) -->
         <div id="whatsnew-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeWhatsNew()">
             <div class="modal-popup" role="dialog" aria-modal="true" aria-label="what's new">
@@ -49,6 +78,32 @@
                     <button class="modal-close" onclick="closeWhatsNew()" aria-label="close">&times;</button>
                 </div>
                 <div class="modal-body">
+                    <div class="whatsnew-entry">
+                        <div class="whatsnew-date">aug 22</div>
+                        <ul>
+                            <li>bulk upload — drop in a whole pile of images at once instead of one at a time</li>
+                            <li>they line up in a queue and generate one after another, so you can walk away and come back later to a stack of finished models</li>
+                            <li>the batch list shows what's waiting (and how long), what's rendering right now, and what's done</li>
+                            <li>tap any finished one to look at it without losing your place in the list</li>
+                            <li>tick the ones you like and grab them all in a single zip</li>
+                            <li>close the tab or refresh — the list picks back up right where it was</li>
+                            <li>big batches now show as a grid of thumbnails so you can spot the one you want at a glance</li>
+                            <li>fold the batch list away with the arrow when it's in your way — it stays folded next time too</li>
+                            <li>filter the list down to just the done ones, the ones still waiting, or the ones that failed</li>
+                        </ul>
+                    </div>
+                    <div class="whatsnew-entry">
+                        <div class="whatsnew-date">may 21</div>
+                        <ul>
+                            <li>mark an item as "✓ uploaded to Roblox" so the rest of us don't upload the same thing twice — the badge shows in everyone's history</li>
+                            <li>name & describe your items yourself — type your own name/description, save it, and it sticks when you come back later</li>
+                            <li>downloads are now named after the item (e.g. "Chubby_Capybara.zip") so they're easy to find in your files</li>
+                            <li>new "how to" guide — required Roblox plugins + a video tutorial link</li>
+                            <li>finished models now pop into the history list instantly (no more closing & reopening it)</li>
+                            <li>if you refresh or your phone sleeps mid-generation, the live progress picks back up automatically</li>
+                            <li>history thumbnails now show your actual image, and the whole site is cleaner on phones</li>
+                        </ul>
+                    </div>
                     <div class="whatsnew-entry">
                         <div class="whatsnew-date">may 15</div>
                         <ul>
@@ -92,11 +147,21 @@
 
         <!-- Upload Area -->
         <div id="upload-area" class="upload-area" onclick="document.getElementById('file-input').click()">
-            <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.webp" hidden>
-            <p id="upload-text">drag & drop an image here, or click to browse</p>
+            <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.webp" multiple hidden>
+            <p id="upload-text">drag & drop images here, or click to browse</p>
             <img id="upload-preview" class="upload-preview hidden" alt="preview">
+
+            <!-- Bulk state: shown once 2+ images are picked -->
+            <div id="bulk-select" class="bulk-select hidden">
+                <div id="bulk-grid" class="bulk-grid"></div>
+                <div class="bulk-foot">
+                    <span id="bulk-count" class="bulk-count"></span>
+                    <button type="button" class="bulk-clear" onclick="event.stopPropagation(); clearBulkSelection()">clear all</button>
+                </div>
+            </div>
+            <p id="bulk-invalid" class="bulk-invalid hidden"></p>
         </div>
-        <p class="upload-tips">tip: centered subject, plain background, square framing — generation takes ~80s</p>
+        <p class="upload-tips">tip: centered subject, plain background, square framing — generation takes ~80s each</p>
 
         <div class="triangle-presets" role="radiogroup" aria-label="triangle count">
             <span class="presets-label">triangles:</span>
@@ -155,6 +220,43 @@
             <p id="status-text" class="status-text"></p>
         </div>
 
+        <!-- Batch Tray (bulk queue) -->
+        <div id="batch-tray" class="batch-tray hidden">
+            <div class="batch-top">
+                <div class="batch-head">
+                    <button type="button" id="batch-collapse" class="batch-collapse"
+                            onclick="toggleBatchCollapsed()" aria-expanded="true" aria-controls="batch-body">
+                        <svg class="batch-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        <span class="batch-title">batch queue</span>
+                    </button>
+                    <button type="button" class="batch-dismiss" onclick="dismissBatch()">clear</button>
+                </div>
+                <div class="batch-bar">
+                    <div id="batch-bar-fill" class="batch-bar-fill"></div>
+                </div>
+                <p id="batch-summary" class="batch-summary"></p>
+            </div>
+            <div id="batch-body" class="batch-body">
+                <p id="batch-skipped" class="batch-skipped hidden"></p>
+                <div class="batch-toolbar">
+                    <div class="batch-filters" role="group" aria-label="filter batch">
+                        <button type="button" class="batch-filter active" data-filter="all" onclick="setBatchFilter('all')">all</button>
+                        <button type="button" class="batch-filter" data-filter="completed" onclick="setBatchFilter('completed')">done</button>
+                        <button type="button" class="batch-filter" data-filter="pending" onclick="setBatchFilter('pending')">waiting</button>
+                        <button type="button" class="batch-filter" data-filter="failed" onclick="setBatchFilter('failed')">failed</button>
+                    </div>
+                    <button type="button" id="batch-view-toggle" class="batch-view-toggle" onclick="toggleBatchView()">list view</button>
+                </div>
+                <div id="batch-list" class="batch-list"></div>
+                <p id="batch-empty" class="batch-empty hidden"></p>
+                <div id="batch-actions" class="batch-actions hidden">
+                    <button type="button" class="batch-select-all" onclick="toggleSelectAllDone()">select all done</button>
+                    <button type="button" id="batch-zip-btn" onclick="downloadSelectedZip()" disabled>download selected as zip</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Error -->
         <div id="error-section" class="hidden">
             <p id="error-text" class="error-text"></p>
@@ -184,21 +286,36 @@
             <p id="model-stats" class="model-stats hidden"></p>
 
             <div id="name-section" class="name-section">
-                <button type="button" id="name-btn" onclick="nameItem()">✨ name this item</button>
-                <div id="name-result" class="ph-result hidden">
-                    <div class="ph-card"><label>name</label><div class="ph-value" id="item-name"></div><button class="ph-copy" data-target="item-name">copy</button></div>
-                    <div class="ph-card"><label>description</label><div class="ph-value" id="item-description"></div><button class="ph-copy" data-target="item-description">copy</button></div>
+                <div class="meta-field">
+                    <label class="ph-label" for="item-name-input">name</label>
+                    <div class="meta-row">
+                        <input id="item-name-input" type="text" maxlength="100" placeholder="name this item" oninput="onMetaEdit()">
+                        <button class="ph-copy" data-copy="item-name-input">copy</button>
+                    </div>
+                </div>
+                <div class="meta-field">
+                    <label class="ph-label" for="item-desc-input">description</label>
+                    <div class="meta-row">
+                        <textarea id="item-desc-input" rows="2" maxlength="300" placeholder="add a description" oninput="onMetaEdit()"></textarea>
+                        <button class="ph-copy" data-copy="item-desc-input">copy</button>
+                    </div>
+                </div>
+                <div class="name-actions">
+                    <button type="button" id="name-btn" onclick="nameItem()">✨ suggest with AI</button>
+                    <button type="button" id="meta-save-btn" onclick="saveMeta()" disabled>saved</button>
                 </div>
                 <p id="name-error" class="ph-error hidden"></p>
             </div>
 
             <a id="download-btn" class="download-btn">download zip</a>
+
+            <button type="button" id="uploaded-btn" class="uploaded-btn" onclick="toggleUploaded()">mark as uploaded to Roblox</button>
         </div>
 
         <!-- History -->
         <div id="history-list" class="history-list hidden"></div>
     </main>
 
-    <script src="/app.js?v=20"></script>
+    <script src="/app.js?v=31"></script>
 </body>
 </html>

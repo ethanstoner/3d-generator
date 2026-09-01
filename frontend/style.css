@@ -173,6 +173,17 @@ button:disabled {
     margin-bottom: 24px;
 }
 
+/* While a generation is active, pin the progress bar to the top of the viewport
+   so it stays visible while scrolling down to browse history or edit an item. */
+#progress-section.sticky-progress {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: #fff;
+    padding-top: 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
 /* Progress */
 .progress-bar {
     height: 4px;
@@ -300,6 +311,55 @@ model-viewer {
     opacity: 0.8;
 }
 
+/* "Uploaded to Roblox" toggle — shared across all friends */
+.uploaded-btn {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    background: #fff;
+    color: #000;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.uploaded-btn:hover:not(:disabled) {
+    border-color: #999;
+}
+
+.uploaded-btn.is-uploaded {
+    background: #16a34a;
+    color: #fff;
+    border-color: #16a34a;
+}
+
+.uploaded-btn.is-uploaded:hover:not(:disabled) {
+    border-color: #16a34a;
+    opacity: 0.85;
+}
+
+/* Green "✓ uploaded" pill shown next to an item's name in history */
+.history-uploaded {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #16a34a;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 999px;
+    vertical-align: middle;
+}
+
+.history-item.uploaded {
+    background: #fafffb;
+}
+
 .model-stats {
     text-align: center;
     font-size: 12px;
@@ -340,6 +400,68 @@ model-viewer {
 
 #name-result {
     margin-top: 12px;
+}
+
+/* Editable item name / description */
+.meta-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.meta-field .ph-label {
+    font-size: 12px;
+    color: #999;
+}
+
+.meta-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+#item-name-input,
+#item-desc-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    color: #000;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+#item-desc-input {
+    resize: vertical;
+    line-height: 1.4;
+}
+
+#item-name-input:focus,
+#item-desc-input:focus {
+    border-color: #000;
+}
+
+.name-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.name-actions button {
+    flex: 1;
+}
+
+#meta-save-btn {
+    padding: 10px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
 }
 
 .retry-btn {
@@ -388,6 +510,91 @@ model-viewer {
 .whatsnew-fab:hover {
     color: #000;
     border-color: #999;
+}
+
+/* How-to / requirements — mirrors the what's-new FAB, top-right corner */
+.howto-fab {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 100;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 999px;
+    color: #888;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.howto-fab:hover {
+    color: #000;
+    border-color: #999;
+}
+
+.howto-section {
+    margin-bottom: 18px;
+}
+
+.modal-body .howto-section:last-child {
+    margin-bottom: 0;
+}
+
+.howto-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #000;
+    margin-bottom: 6px;
+}
+
+.howto-note {
+    font-size: 12px;
+    color: #888;
+    line-height: 1.5;
+    margin-bottom: 10px;
+}
+
+.howto-links {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+}
+
+.howto-links a {
+    display: block;
+    padding: 10px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #000;
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.howto-links a:hover {
+    border-color: #999;
+    background: #fafafa;
+}
+
+.howto-tutorial {
+    display: inline-block;
+    padding: 10px 16px;
+    background: #000;
+    color: #fff;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: opacity 0.15s;
+}
+
+.howto-tutorial:hover {
+    opacity: 0.8;
 }
 
 /* Shared modal — fixed, on top of everything, never shifts page layout */
@@ -866,6 +1073,552 @@ model-viewer {
     color: #999;
     text-align: center;
     padding: 24px 0;
+}
+
+/* Bulk selection grid (inside the upload area, 2+ images picked) */
+.bulk-select {
+    margin-top: 14px;
+    text-align: left;
+}
+
+.bulk-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.bulk-thumb {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fafafa;
+}
+
+.bulk-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.bulk-thumb-x {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+    font-family: inherit;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.55);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.bulk-thumb-x:hover {
+    background: #cc0000;
+    opacity: 1;
+}
+
+.bulk-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.bulk-count {
+    font-size: 13px;
+    font-weight: 500;
+    color: #000;
+}
+
+.bulk-clear {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 400;
+    color: #666;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.bulk-clear:hover {
+    color: #cc0000;
+    border-color: #cc0000;
+    opacity: 1;
+}
+
+.bulk-invalid {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #cc0000;
+    line-height: 1.5;
+    text-align: left;
+    word-break: break-word;
+}
+
+/* Batch tray — the live queue for a bulk upload */
+.batch-tray {
+    margin-bottom: 24px;
+}
+
+/* While the batch is working, pin its header + bar to the top of the viewport
+   (the same idea as .sticky-progress, which stays hidden during bulk runs). */
+.batch-tray.running .batch-top {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: #fff;
+    padding-top: 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.batch-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.batch-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #000;
+}
+
+/* Collapse control. A 20-image batch is a wall of rows that owns the whole
+   page for half an hour — it has to be foldable away at any time, running or
+   not, without throwing the list away. */
+.batch-collapse {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #000;
+}
+
+.batch-chevron {
+    color: #999;
+    transition: transform 0.2s;
+}
+
+.batch-collapse:hover .batch-chevron { color: #000; }
+
+.batch-tray.collapsed .batch-chevron { transform: rotate(-90deg); }
+
+.batch-tray.collapsed .batch-body { display: none; }
+
+.batch-tray.collapsed .batch-summary { margin-bottom: 0; }
+
+.batch-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.batch-filters {
+    display: flex;
+    gap: 4px;
+}
+
+.batch-filter {
+    padding: 3px 10px;
+    font-size: 12px;
+    color: #666;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.batch-filter:hover { color: #000; border-color: #999; }
+
+.batch-filter.active {
+    color: #fff;
+    background: #000;
+    border-color: #000;
+}
+
+.batch-view-toggle {
+    padding: 3px 10px;
+    font-size: 12px;
+    color: #666;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.batch-view-toggle:hover { color: #000; border-color: #999; }
+
+.batch-empty {
+    font-size: 13px;
+    color: #999;
+    text-align: center;
+    padding: 20px 0;
+}
+
+.batch-dismiss {
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 400;
+    color: #666;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.batch-dismiss:hover {
+    color: #000;
+    border-color: #999;
+    opacity: 1;
+}
+
+.batch-bar {
+    height: 4px;
+    background: #f0f0f0;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.batch-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: #000;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+.batch-summary {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 12px;
+}
+
+.batch-skipped {
+    font-size: 12px;
+    color: #cc0000;
+    line-height: 1.5;
+    margin-bottom: 10px;
+    word-break: break-word;
+}
+
+.batch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    /* Cap the height and scroll internally so the tray never pushes history and
+       the rest of the page off the bottom of a long batch. */
+    max-height: 58vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* --- Grid view: thumbnails are the identifier, since every file in a bulk
+   drop is named something like "Screenshot 2026-08-22 112346.png". --- */
+.batch-list.as-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
+}
+
+.batch-tile {
+    position: relative;
+    aspect-ratio: 1;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fafafa;
+    transition: border-color 0.15s;
+}
+
+.batch-tile.completed { cursor: pointer; }
+.batch-tile.completed:hover { border-color: #999; }
+.batch-tile.failed { border-color: #f3d6d6; background: #fffafa; }
+
+.tile-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.tile-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.82);
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+}
+
+.tile-pct { color: #000; }
+.tile-x { color: #cc0000; }
+
+.tile-mini {
+    width: 60%;
+    height: 3px;
+    background: #e8e8e8;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.tile-mini-fill {
+    height: 100%;
+    background: #000;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.tile-check {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #000;
+}
+
+.batch-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    transition: border-color 0.15s;
+}
+
+.batch-item.completed {
+    cursor: pointer;
+}
+
+.batch-item.completed:hover {
+    border-color: #999;
+}
+
+.batch-item.failed {
+    background: #fffafa;
+    border-color: #f3d6d6;
+}
+
+.batch-check {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    accent-color: #000;
+    cursor: pointer;
+    margin: 0;
+}
+
+.batch-check-spacer {
+    width: 16px;
+    flex: 0 0 auto;
+}
+
+.batch-thumb {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
+    border-radius: 4px;
+    object-fit: cover;
+    background: #fafafa;
+}
+
+.batch-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.batch-name {
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.batch-state {
+    font-size: 12px;
+    color: #999;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.batch-state.is-error {
+    color: #cc0000;
+    white-space: normal;
+}
+
+.batch-mini {
+    height: 3px;
+    background: #f0f0f0;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.batch-mini-fill {
+    height: 100%;
+    background: #000;
+    border-radius: 2px;
+    transition: width 1.8s linear;
+}
+
+.batch-badge {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 999px;
+    border: 1px solid #e0e0e0;
+    color: #999;
+    background: #fafafa;
+}
+
+.batch-badge.running {
+    color: #000;
+    border-color: #000;
+    background: #fff;
+}
+
+.batch-badge.done {
+    color: #16a34a;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.batch-badge.failed {
+    color: #cc0000;
+    background: #fff5f5;
+    border-color: #f3d6d6;
+}
+
+.batch-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.batch-select-all {
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #000;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+
+.batch-select-all:hover {
+    border-color: #999;
+    opacity: 1;
+}
+
+#batch-zip-btn {
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 13px;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+    /* Tall content (the preview, long history) gets clipped at the top when a
+       flex parent centers it vertically — pin to the top on small screens. */
+    body {
+        align-items: flex-start;
+    }
+    main {
+        /* extra top padding clears the fixed corner FABs (what's new / how to)
+           so they never overlap the logo or GPU status on narrow screens */
+        padding: 52px 16px 28px;
+    }
+    .site-logo { height: 30px; }
+    .site-logo-lg { height: 44px; }
+    .subtitle { margin-bottom: 24px; }
+    model-viewer, .texture-image { height: 300px; }
+    .whatsnew-fab {
+        top: 10px;
+        left: 10px;
+        padding: 5px 11px;
+        font-size: 11px;
+    }
+    .howto-fab {
+        top: 10px;
+        right: 10px;
+        padding: 5px 11px;
+        font-size: 11px;
+    }
+    .modal-overlay { padding: 12px; }
+    .modal-popup { max-height: 88vh; }
+    /* The 80px label column crowds the value on narrow screens — stack it. */
+    .ph-card {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+    .ph-copy { justify-self: start; }
+    .triangle-presets { gap: 6px; }
+    .preset-chip { padding: 5px 12px; }
+    /* The upload area's generous desktop padding wastes half the width once
+       there's a thumbnail grid inside it. */
+    .upload-area { padding: 24px 14px; }
+    .bulk-grid {
+        grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+        gap: 6px;
+        max-height: 220px;
+    }
+    /* The filter row and the view toggle don't fit on one line on a phone. */
+    .batch-toolbar {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .batch-filter, .batch-view-toggle {
+        padding: 4px 9px;
+        font-size: 11px;
+    }
+    .batch-list { max-height: 52vh; }
+    .batch-list.as-grid {
+        grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+        gap: 6px;
+    }
+    .batch-item { padding: 9px 10px; gap: 8px; }
+    .batch-thumb { width: 38px; height: 38px; }
+    .batch-badge { padding: 2px 7px; font-size: 10px; }
+    /* Two full-width buttons don't fit side by side on a phone. */
+    .batch-actions { flex-direction: column; }
+    .batch-select-all, #batch-zip-btn { width: 100%; }
 }
 
 /* Utility */
