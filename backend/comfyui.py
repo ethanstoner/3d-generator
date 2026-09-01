@@ -56,6 +56,33 @@ async def download_output(filename: str, subfolder: str = "", filetype: str = "o
         r.raise_for_status()
         return r.content
 
+async def find_latest_numbered_output(prefix: str, ext: str, max_index: int = 200, batch: int = 20) -> str | None:
+    """Find the highest-numbered '{prefix}_NNNNN_.{ext}' file that exists in
+    ComfyUI's output dir by probing /view with HEAD requests. Used in
+    production, where the Linux backend can't see the Windows output directory
+    over the LAN. Probes in descending concurrent batches so it resolves in a
+    couple of round-trips instead of up to `max_index` sequential ones. Returns
+    the same result as a 200->1 linear scan (highest existing index <= max_index)."""
+    url = f"{get_comfyui_url()}/view"
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        async def exists(i: int):
+            fname = f"{prefix}_{i:05d}_.{ext}"
+            try:
+                r = await client.head(url, params={"filename": fname, "type": "output"})
+                return i if r.status_code == 200 else None
+            except Exception:
+                return None
+        hi = max_index
+        while hi > 0:
+            lo = max(1, hi - batch + 1)
+            results = await asyncio.gather(*(exists(i) for i in range(lo, hi + 1)))
+            found = [i for i in results if i is not None]
+            if found:
+                return f"{prefix}_{max(found):05d}_.{ext}"
+            hi = lo - 1
+    return None
+
+
 def list_output_files(prefix: str, ext: str) -> list[str]:
     """List output files matching prefix*.ext from ComfyUI output directory.
     Uses filesystem if COMFYUI_OUTPUT_DIR is set, otherwise returns empty."""
