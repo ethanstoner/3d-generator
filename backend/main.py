@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import uuid
 import time
@@ -8,7 +9,6 @@ import asyncio
 import zipfile
 import io
 import base64
-import httpx
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -27,6 +27,27 @@ from backend import llm
 class PromptHelpRequest(BaseModel):
     idea: str
 
+
+class MetaUpdate(BaseModel):
+    name: str = ""
+    description: str = ""
+
+
+class UploadedUpdate(BaseModel):
+    uploaded: bool
+
+
+class MultiDownload(BaseModel):
+    job_ids: list[str] = []
+
+
+def _safe_filename(name: str) -> str:
+    """Turn an item name into a filesystem-safe zip stem (drops emoji/punctuation,
+    spaces -> underscores). Returns '' if nothing usable remains."""
+    name = re.sub(r"[^\w\s.-]", "", name, flags=re.UNICODE)
+    name = re.sub(r"\s+", "_", name.strip())
+    return name[:60].strip("._-")
+
 SITE_PASSWORD = os.getenv("SITE_PASSWORD", "change-me")
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 COOKIE_NAME = "session"
@@ -40,7 +61,8 @@ signer = URLSafeSerializer(SECRET_KEY)
 app = FastAPI()
 
 # --- In-memory job store ---
-# {job_id: {status, progress, stage, step, total_steps, prompt_id, error, files, queue_position}}
+# {job_id: {status, progress, stage, step, total_steps, prompt_id, error, files,
+#           queue_position, batch_id, filename}}
 jobs: dict[str, dict] = {}
 job_queue: asyncio.Queue = asyncio.Queue()
 queue_order: list[str] = []  # ordered list of queued job IDs for position tracking
@@ -80,6 +102,42 @@ def update_history(job_id: str, fields: dict):
     save_history(history)
 
 
+# --- Pending queue (persistent JSON file) ---
+# The jobs dict and the asyncio.Queue live in memory only, so a restart used to
+# silently drop everything still waiting. A bulk upload is meant to be dropped
+# off and collected hours later, so pending work has to survive a restart.
+PENDING_FILE = JOBS_DIR / "pending.json"
+
+def load_pending() -> list[dict]:
+    if PENDING_FILE.exists():
+        try:
+            records = json.loads(PENDING_FILE.read_text())
+            if isinstance(records, list):
+                return [r for r in records if isinstance(r, dict)]
+        except Exception:
+            return []
+    return []
+
+def save_pending(records: list[dict]):
+    # Never let a bad write take the server down — a lost pending record costs
+    # one re-upload, an unhandled exception costs the whole queue.
+    try:
+        PENDING_FILE.write_text(json.dumps(records, indent=2))
+    except OSError as e:
+        print(f"[pending] could not write {PENDING_FILE.name}: {e}")
+
+def append_pending(entry: dict):
+    records = load_pending()
+    records.append(entry)  # oldest first — restore replays in enqueue order
+    save_pending(records)
+
+def remove_pending(job_id: str):
+    records = load_pending()
+    remaining = [r for r in records if r.get("job_id") != job_id]
+    if len(remaining) != len(records):
+        save_pending(remaining)
+
+
 # --- Prompt-help history (shared, persistent JSON file) ---
 PROMPT_HISTORY_FILE = JOBS_DIR / "prompt_history.json"
 PROMPT_HISTORY_MAX = 50
@@ -107,7 +165,7 @@ async def queue_worker():
     """Process jobs one at a time from the queue."""
     global active_job_id
     while True:
-        job_id, file_bytes, filename, triangles = await job_queue.get()
+        job_id, input_path, filename, triangles = await job_queue.get()
         active_job_id = job_id
         if job_id in queue_order:
             queue_order.remove(job_id)
@@ -117,12 +175,15 @@ async def queue_worker():
                 jobs[qid]["queue_position"] = i + 1
         try:
             async with gpu_lock:
-                await _run_job(job_id, file_bytes, filename, triangles)
+                await _run_job(job_id, input_path, filename, triangles)
         except Exception as e:
             if job_id in jobs:
                 jobs[job_id]["status"] = "failed"
                 jobs[job_id]["error"] = str(e)
         finally:
+            # Terminal either way (completed or failed) — drop the restart
+            # record here so there's one place that can't be forgotten.
+            remove_pending(job_id)
             active_job_id = None
             job_queue.task_done()
 
@@ -131,11 +192,45 @@ async def queue_worker():
 @app.on_event("startup")
 async def startup():
     JOBS_DIR.mkdir(exist_ok=True)
-    _sweep_orphan_job_dirs()
+    # Read pending.json BEFORE the sweep and hand the ids over as protected.
+    # A pending job's dir holds its input image so it is non-empty and the
+    # sweep would keep it anyway — but relying on that is a trap waiting for
+    # the day a zero-byte upload gets staged. Make the ordering explicit.
+    pending = load_pending()
+    _sweep_orphan_job_dirs({r.get("job_id") for r in pending})
     asyncio.create_task(queue_worker())
+    await _restore_pending_jobs(pending)
 
 
-def _sweep_orphan_job_dirs():
+async def _restore_pending_jobs(pending: list[dict]):
+    """Re-enqueue jobs that were still waiting when the server went down, in
+    their original order. The input image is already staged on disk, so nothing
+    has to be re-uploaded."""
+    restored = []
+    for record in pending:
+        try:
+            job_id = record["job_id"]
+            input_path = Path(record["input_path"])
+            triangles = int(record.get("triangles", 4000))
+        except Exception:
+            continue  # a mangled record is not worth failing startup over
+        if job_id in jobs or not input_path.exists():
+            continue
+        if triangles not in ALLOWED_TRIANGLES:
+            triangles = 4000
+        _register_job(
+            job_id, record.get("filename") or input_path.name, triangles,
+            record.get("batch_id"),
+        )
+        await job_queue.put((job_id, str(input_path), jobs[job_id]["filename"], triangles))
+        restored.append(job_id)
+    # Rewrite the file so records whose input vanished don't linger forever
+    save_pending([r for r in pending if r.get("job_id") in restored])
+    if restored:
+        print(f"[pending] re-enqueued {len(restored)} job(s) from pending.json")
+
+
+def _sweep_orphan_job_dirs(protected: set | None = None):
     """Remove EMPTY orphan job folders (left by failed/aborted generations or
     server restarts) that aren't referenced in history.json, so the box stays
     in sync with the site. Non-empty untracked folders are kept and logged —
@@ -144,6 +239,7 @@ def _sweep_orphan_job_dirs():
         ids = {h.get("job_id") for h in load_history()}
     except Exception:
         return
+    ids |= (protected or set())
     for d in JOBS_DIR.iterdir():
         if not d.is_dir() or d.name.startswith(".") or d.name in ids:
             continue
@@ -254,6 +350,75 @@ async def research_prompt(request: Request):
     return {"prompt": llm.build_research_prompt()}
 
 
+def _validate_upload(filename: str, file_bytes: bytes) -> str:
+    """Returns '' if the upload is usable, else the reason it isn't. Shared by
+    the single and batch paths so both reject exactly the same things."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ("png", "jpg", "jpeg", "webp"):
+        return "unsupported image format (use PNG, JPG, or WEBP)"
+    if len(file_bytes) > 20 * 1024 * 1024:
+        return "image too large (max 20MB)"
+    if not file_bytes:
+        return "empty file"
+    return ""
+
+
+def _stage_input(job_id: str, file_bytes: bytes, filename: str) -> Path:
+    """Write the upload to jobs/{job_id}/input.{ext} at ENQUEUE time. The queue
+    then carries the path instead of the bytes — a 30-image batch sitting on the
+    queue as bytes would pin up to 600MB of RAM until the worker drained it."""
+    job_dir = JOBS_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"
+    if ext not in ("png", "jpg", "jpeg", "webp"):
+        ext = "png"
+    path = job_dir / f"input.{ext}"
+    path.write_bytes(file_bytes)
+    return path
+
+
+def _register_job(job_id: str, filename: str, triangles: int, batch_id: str | None):
+    # Position = items in queue + 1 (self) + 1 if a job is currently running
+    position = job_queue.qsize() + 1 + (1 if active_job_id else 0)
+    queue_order.append(job_id)
+    jobs[job_id] = {
+        "status": "queued",
+        "progress": 0,
+        "stage": "queued",
+        "step": 0,
+        "total_steps": 0,
+        "prompt_id": None,
+        "error": None,
+        "files": [],
+        "queue_position": position,
+        "triangles": triangles,
+        "started_at": None,
+        "finished_at": None,
+        "batch_id": batch_id,
+        "filename": filename,
+    }
+
+
+async def _enqueue_job(file_bytes: bytes, filename: str, triangles: int,
+                       batch_id: str | None = None) -> str:
+    """Stage the image, record the job, persist it for restart survival, and
+    hand the worker the path. One code path for both /api/generate and
+    /api/generate-batch."""
+    job_id = uuid.uuid4().hex[:8]
+    input_path = _stage_input(job_id, file_bytes, filename)
+    _register_job(job_id, filename, triangles, batch_id)
+    append_pending({
+        "job_id": job_id,
+        "batch_id": batch_id,
+        "filename": filename,
+        "input_path": str(input_path),
+        "triangles": triangles,
+        "enqueued_at": int(time.time()),
+    })
+    await job_queue.put((job_id, str(input_path), filename, triangles))
+    return job_id
+
+
 @app.post("/api/generate")
 async def generate(
     request: Request,
@@ -269,58 +434,88 @@ async def generate(
     if mode != "image" or not file:
         raise HTTPException(400, detail="upload an image")
 
-    # Validate file type
-    ext = file.filename.rsplit(".", 1)[-1].lower() if file.filename else ""
-    if ext not in ("png", "jpg", "jpeg", "webp"):
-        raise HTTPException(400, detail="unsupported image format (use PNG, JPG, or WEBP)")
-
-    # Read and validate size
+    filename = file.filename or "input.png"
     file_bytes = await file.read()
-    if len(file_bytes) > 20 * 1024 * 1024:
-        raise HTTPException(400, detail="image too large (max 20MB)")
+    reason = _validate_upload(filename, file_bytes)
+    if reason:
+        raise HTTPException(400, detail=reason)
 
     if triangles not in ALLOWED_TRIANGLES:
         raise HTTPException(400, detail="invalid triangle count")
 
-    # Create job
-    job_id = uuid.uuid4().hex[:8]
-    job_dir = JOBS_DIR / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-
-    # Position = items in queue + 1 (self) + 1 if a job is currently running
-    position = job_queue.qsize() + 1 + (1 if active_job_id else 0)
-    queue_order.append(job_id)
-
-    jobs[job_id] = {
-        "status": "queued",
-        "progress": 0,
-        "stage": "queued",
-        "step": 0,
-        "total_steps": 0,
-        "prompt_id": None,
-        "error": None,
-        "files": [],
-        "queue_position": position,
-        "triangles": triangles,
-        "started_at": None,
-        "finished_at": None,
-    }
-
-    # Add to queue (worker processes one at a time)
-    await job_queue.put((job_id, file_bytes, file.filename or "input.png", triangles))
+    job_id = await _enqueue_job(file_bytes, filename, triangles)
     return {"job_id": job_id}
 
 
-async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int):
+@app.post("/api/generate-batch")
+async def generate_batch(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    triangles: int = Form(4000),
+):
+    """Bulk upload: queue many images in one call and walk away. Files are
+    validated independently — one unusable file is skipped and reported, it
+    never rejects the other 29."""
+    check_auth(request)
+
+    if not await comfyui.is_online():
+        raise HTTPException(503, detail="gpu is offline")
+
+    if triangles not in ALLOWED_TRIANGLES:
+        raise HTTPException(400, detail="invalid triangle count")
+
+    if not files:
+        raise HTTPException(400, detail="upload at least one image")
+    if len(files) > 50:
+        raise HTTPException(400, detail="too many images (max 50 per batch)")
+
+    batch_id = uuid.uuid4().hex[:8]
+    queued: list[dict] = []
+    skipped: list[dict] = []
+    for f in files:
+        filename = f.filename or "input.png"
+        file_bytes = await f.read()
+        reason = _validate_upload(filename, file_bytes)
+        if reason:
+            skipped.append({"filename": filename, "reason": reason})
+            continue
+        job_id = await _enqueue_job(file_bytes, filename, triangles, batch_id)
+        queued.append({"job_id": job_id, "filename": filename})
+
+    return {"batch_id": batch_id, "jobs": queued, "skipped": skipped}
+
+
+@app.get("/api/queue")
+async def get_queue(request: Request, batch_id: str | None = None):
+    """One poll for a whole batch. The frontend would otherwise fire 30
+    /api/jobs/{id} requests every couple of seconds."""
+    check_auth(request)
+    out = []
+    for job_id, job in jobs.items():
+        if batch_id and job.get("batch_id") != batch_id:
+            continue
+        out.append({
+            "job_id": job_id,
+            "batch_id": job.get("batch_id"),
+            "filename": job.get("filename"),
+            "status": job["status"],
+            "progress": job["progress"],
+            "stage": job["stage"],
+            "queue_position": job.get("queue_position", 0),
+            "error": job["error"],
+            "triangles": job.get("triangles"),
+        })
+    return {"active": active_job_id, "jobs": out}
+
+
+async def _run_job(job_id: str, input_path: str, filename: str, triangles: int):
     job = jobs[job_id]
     job_dir = JOBS_DIR / job_id
     job["started_at"] = time.time()
     try:
-        # Persist the input image so it can be named/described later (incl. from history)
-        in_ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"
-        if in_ext not in ("png", "jpg", "jpeg", "webp"):
-            in_ext = "png"
-        (job_dir / f"input.{in_ext}").write_bytes(file_bytes)
+        # The input image was already staged to disk at enqueue time (and stays
+        # there so the item can be named/described later, incl. from history).
+        file_bytes = Path(input_path).read_bytes()
 
         # Upload image to ComfyUI
         job["stage"] = "uploading image"
@@ -364,7 +559,10 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int
 
         collected_files = []
 
-        # 1) Collect files from history API (texture PNG from SaveImage)
+        # 1) Collect files reported in the history API. The texture PNG always
+        #    shows up here (from SaveImage). Some ComfyUI builds also report the
+        #    exported GLBs here — when they do, grab them now and skip the
+        #    filesystem/HTTP probing below entirely.
         for node_id, node_output in outputs.items():
             for key, items in node_output.items():
                 if not isinstance(items, list):
@@ -374,10 +572,17 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int
                         continue
                     fname = item["filename"]
                     subfolder = item.get("subfolder", "")
-                    if fname.endswith(".png") and "Texture" in fname:
+                    if fname.endswith(".png") and "Texture" in fname and "texture.png" not in collected_files:
                         data = await comfyui.download_output(fname, subfolder)
                         (job_dir / "texture.png").write_bytes(data)
                         collected_files.append("texture.png")
+                    elif fname.endswith(".glb"):
+                        # "Untextured" contains "Textured" as a substring — test it first.
+                        local = "untextured.glb" if "Untextured" in fname else "textured.glb"
+                        if local not in collected_files:
+                            data = await comfyui.download_output(fname, subfolder)
+                            (job_dir / local).write_bytes(data)
+                            collected_files.append(local)
 
         # 2) GLB files are written directly to ComfyUI's output dir
         #    by Hy3DInPaint (Textured.glb) and Hy3D21ExportMesh (Untextured_NNNNN_.glb)
@@ -409,19 +614,9 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int
                         shutil.copy2(str(src), str(job_dir / "untextured.glb"))
                         collected_files.append("untextured.glb")
             if "untextured.glb" not in collected_files:
-                # HTTP fallback: try downloading the latest Untextured file
-                # Probe a range to find the highest numbered one
-                latest_untextured = None
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    for i in range(200, 0, -1):
-                        fname = f"Untextured_{i:05d}_.glb"
-                        try:
-                            r = await client.head(f"{comfyui.get_comfyui_url()}/view", params={"filename": fname, "type": "output"})
-                            if r.status_code == 200:
-                                latest_untextured = fname
-                                break
-                        except Exception:
-                            continue
+                # HTTP fallback (prod: output dir not visible over the LAN) —
+                # find the highest-numbered Untextured GLB via concurrent probes.
+                latest_untextured = await comfyui.find_latest_numbered_output("Untextured", "glb")
                 if latest_untextured:
                     try:
                         data = await comfyui.download_output(latest_untextured)
@@ -447,6 +642,7 @@ async def _run_job(job_id: str, file_bytes: bytes, filename: str, triangles: int
         # Save to persistent history
         append_history({
             "job_id": job_id,
+            "batch_id": job.get("batch_id"),
             "timestamp": int(time.time()),
             "filename": filename,
             "files": collected_files,
@@ -489,6 +685,8 @@ async def get_job(job_id: str, request: Request):
         "duration": duration,
         "name": job.get("name"),
         "description": job.get("description"),
+        "uploaded": job.get("uploaded", False),
+        "batch_id": job.get("batch_id"),
     }
 
 
@@ -507,6 +705,27 @@ async def get_file(job_id: str, filename: str, request: Request):
         path,
         media_type=media,
         filename=filename,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@app.get("/api/jobs/{job_id}/thumb")
+async def get_thumb(job_id: str, request: Request):
+    """Small thumbnail for the history list. Prefers the original input image
+    (the actual subject — instantly recognizable) over the baked UV texture
+    atlas, which looks like scrambled noise at 48px. Falls back to texture.png
+    for older generations that predate input-image persistence."""
+    check_auth(request)
+    job_dir = JOBS_DIR / job_id
+    inputs = sorted(job_dir.glob("input.*")) if job_dir.exists() else []
+    path = inputs[0] if inputs else (job_dir / "texture.png")
+    if not path.exists():
+        raise HTTPException(404, detail="no thumbnail")
+    ext = path.suffix.lower().lstrip(".")
+    media = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext or 'png'}"
+    return FileResponse(
+        path,
+        media_type=media,
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
@@ -530,15 +749,70 @@ async def download_zip(job_id: str, request: Request):
             if fpath.exists():
                 zf.write(fpath, fname)
     buf.seek(0)
+    # Name the zip after the item (if it has a saved name) so it's easy to find
+    # in the user's downloads; fall back to the job id.
+    name = (job or {}).get("name")
+    if not name:
+        name = next((h.get("name") for h in load_history() if h.get("job_id") == job_id), None)
+    stem = _safe_filename(name) if name else ""
+    zip_name = f"{stem}.zip" if stem else f"3d-model-{job_id}.zip"
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename=3d-model-{job_id}.zip"},
+        headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
+    )
+
+
+@app.post("/api/download-multi")
+async def download_multi(body: MultiDownload, request: Request):
+    """One zip for a whole batch, a folder per item. Missing jobs are skipped
+    rather than failing the zip — after a bulk run some items may have been
+    deleted already, and that shouldn't cost the user the other 29."""
+    check_auth(request)
+    job_ids = body.job_ids
+    if not job_ids:
+        raise HTTPException(400, detail="no job ids given")
+    if len(job_ids) > 50:
+        raise HTTPException(400, detail="too many items (max 50 per download)")
+
+    history = load_history()
+    buf = io.BytesIO()
+    used_folders: set[str] = set()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for job_id in job_ids:
+            job_dir = JOBS_DIR / job_id
+            if not job_dir.exists():
+                continue
+            job = jobs.get(job_id)
+            if job and job.get("files"):
+                file_list = job["files"]
+            else:
+                file_list = [f.name for f in job_dir.iterdir() if f.is_file()]
+            name = (job or {}).get("name")
+            if not name:
+                name = next((h.get("name") for h in history if h.get("job_id") == job_id), None)
+            folder = (_safe_filename(name) if name else "") or job_id
+            # Two items can share a saved name — suffix the id so the second
+            # one doesn't silently overwrite the first inside the zip.
+            if folder in used_folders:
+                folder = f"{folder}-{job_id}"
+            used_folders.add(folder)
+            for fname in file_list:
+                fpath = job_dir / fname
+                if fpath.exists():
+                    zf.write(fpath, f"{folder}/{fname}")
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="3d-models.zip"'},
     )
 
 
 @app.post("/api/jobs/{job_id}/name")
-async def name_item(job_id: str, request: Request):
+async def name_item(job_id: str, request: Request, vary: bool = False):
+    # vary=true (sent by "re-suggest") asks for a fresh alternative instead of
+    # the identical deterministic result; the first suggest uses vary=false.
     check_auth(request)
     if not await comfyui.is_online():
         raise HTTPException(503, detail="gpu is offline")
@@ -553,7 +827,7 @@ async def name_item(job_id: str, request: Request):
     except asyncio.TimeoutError:
         raise HTTPException(503, detail="gpu busy with a 3d generation, try again in a moment")
     try:
-        result = await llm.describe_image(image_b64)
+        result = await llm.describe_image(image_b64, vary=vary)
     except RuntimeError as e:
         raise HTTPException(503, detail=str(e))
     finally:
@@ -564,6 +838,42 @@ async def name_item(job_id: str, request: Request):
         jobs[job_id]["description"] = result["description"]
     update_history(job_id, {"name": result["name"], "description": result["description"]})
     return result
+
+
+@app.post("/api/jobs/{job_id}/meta")
+async def set_meta(job_id: str, body: MetaUpdate, request: Request):
+    """Save a user-edited name/description for an item. No GPU needed — it's
+    just text. Persists to history so the item keeps its name on return, and
+    the download zip is named after it."""
+    check_auth(request)
+    job_dir = JOBS_DIR / job_id
+    in_history = any(h.get("job_id") == job_id for h in load_history())
+    if job_id not in jobs and not in_history and not job_dir.exists():
+        raise HTTPException(404, detail="item not found")
+    name = body.name.strip()[:100]
+    description = body.description.strip()[:300]
+    if job_id in jobs:
+        jobs[job_id]["name"] = name
+        jobs[job_id]["description"] = description
+    update_history(job_id, {"name": name, "description": description})
+    return {"ok": True, "name": name, "description": description}
+
+
+@app.post("/api/jobs/{job_id}/uploaded")
+async def set_uploaded(job_id: str, body: UploadedUpdate, request: Request):
+    """Mark an item as already uploaded to Roblox (or unmark it). This is a
+    SHARED flag — there's one password/identity, so every friend sees it. It
+    lets the group avoid two people uploading the same item. Persists to
+    history so it survives restarts and shows in everyone's list."""
+    check_auth(request)
+    job_dir = JOBS_DIR / job_id
+    in_history = any(h.get("job_id") == job_id for h in load_history())
+    if job_id not in jobs and not in_history and not job_dir.exists():
+        raise HTTPException(404, detail="item not found")
+    if job_id in jobs:
+        jobs[job_id]["uploaded"] = body.uploaded
+    update_history(job_id, {"uploaded": body.uploaded})
+    return {"ok": True, "uploaded": body.uploaded}
 
 
 @app.get("/api/history")
@@ -595,6 +905,14 @@ async def delete_history_entry(job_id: str, request: Request):
     history = load_history()
     history = [h for h in history if h["job_id"] != job_id]
     save_history(history)
+    # ...and drop the in-memory record too. Without this the job keeps reporting
+    # status=completed with a stale file list for files that no longer exist, so
+    # a deleted item reappears as a finished row in the batch tray (which reads
+    # /api/queue) with a download that 404s.
+    jobs.pop(job_id, None)
+    if job_id in queue_order:
+        queue_order.remove(job_id)
+    remove_pending(job_id)
     return {"ok": True}
 
 
