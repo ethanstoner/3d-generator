@@ -6,3 +6,5 @@ venv/
 docs/superpowers/
 .playwright-mcp/
 .launcher-logs/
+CLAUDE.md
+.venv/
