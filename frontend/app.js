@@ -313,8 +313,11 @@ async function startGeneration() {
     }
 }
 
-// Generation runs ~80s per image, so a queue position is roughly that many
-// seconds of waiting. Shared by the single-job bar and the batch tray.
+// Median generation time measured over 60 real runs at 4k triangles, so a queue
+// position is roughly that many seconds of waiting. Shared by the single-job bar
+// and the batch tray.
+const SECONDS_PER_JOB = 90;
+
 function formatEta(sec) {
     return sec >= 60 ? `~${Math.floor(sec / 60)}m ${sec % 60}s` : `~${sec}s`;
 }
@@ -329,7 +332,7 @@ async function pollJob() {
         let statusMsg;
         const progressBar = document.getElementById('progress-fill');
         if (data.status === 'queued') {
-            const etaStr = formatEta(data.queue_position * 80);
+            const etaStr = formatEta(data.queue_position * SECONDS_PER_JOB);
             if (data.queue_position > 1) {
                 statusMsg = `waiting in queue (position ${data.queue_position}) — ${etaStr}`;
             } else {
@@ -643,7 +646,7 @@ function batchRow(j) {
     let state, badge, mini = '';
     if (j.status === 'queued') {
         const pos = j.queue_position || 1;
-        const eta = formatEta(pos * 80);
+        const eta = formatEta(pos * SECONDS_PER_JOB);
         state = pos > 1 ? `in queue (position ${pos}) — ${eta}` : `next up — ${eta}`;
         badge = '<span class="batch-badge queued">queued</span>';
     } else if (j.status === 'running') {
