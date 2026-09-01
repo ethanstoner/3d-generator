@@ -125,31 +125,58 @@ async def refine_idea(idea: str) -> dict:
     }
 
 
-DESCRIBE_SYSTEM_PROMPT = f"""You are a product copywriter for a Roblox UGC store. You will be shown an IMAGE of a single toy/plush/figurine that has been turned into a 3D backpack accessory.
+# Roblox store CTA appended to every described item's description. Built in
+# code (see _finalize_description) rather than asked of the vision model, which
+# mangles long literals (drops it, leaves stray characters, etc.).
+STORE_LINK = "https://www.roblox.com/communities/33808534/kirq#!/store"
+MORE_SUFFIX = f"- More: {STORE_LINK}"
 
-Look at the image, identify the character/subject (and its franchise if recognizable), then return a JSON object with exactly two fields and nothing else (no markdown, no commentary):
+# IMPORTANT: this prompt deliberately contains NO concrete example subjects and
+# NOT the BACKPACK_RULES block. Those rules are about *choosing ideas to
+# generate*, not *describing an existing image* — and the weak 11B vision model
+# copies any concrete subject it sees in the prompt (it would name a boba tea
+# "Angry Log Brainrot Icon", parroting an old example) instead of reading the
+# image. With nothing to copy, it reliably describes what is actually shown.
+DESCRIBE_SYSTEM_PROMPT = """You are a product copywriter for a Roblox UGC store. You will be shown an IMAGE of a single toy, plush, or figurine that has been turned into a 3D backpack accessory.
 
-{{
-  "name": "<catchy Roblox marketplace name for this item, max 50 chars>",
-  "description": "<one short line with exactly one emoji, ending with this exact text: More: https://www.roblox.com/communities/33808534/kirq#!/store>"
-}}
+Look ONLY at the image. Identify the exact object that is actually shown. If you clearly recognize the character or franchise, use its real name; otherwise give a short, catchy name for what you see. NEVER name or describe anything that is not visible in the image, and never copy wording from these instructions.
 
-Base the name and description ONLY on what is actually visible in the image. Be specific about the character; do not invent details you cannot see.
+Return ONLY a JSON object with exactly these two fields and nothing else (no markdown, no commentary):
 
-Examples of the expected name/description style:
-- {{"name": "Chubby Capybara Plush", "description": "\U0001f9a6 cozy capybara backpack with a tiny duck friend - More: https://www.roblox.com/communities/33808534/kirq#!/store"}}
-- {{"name": "Labubu x Hello Kitty", "description": "\U0001f380 Labubu in a Hello Kitty costume - More: https://www.roblox.com/communities/33808534/kirq#!/store"}}
-- {{"name": "Tung Tung Tung Sahur", "description": "\U0001fab5 the angry log brainrot icon - More: https://www.roblox.com/communities/33808534/kirq#!/store"}}
-
-Context on what these items are:
-
-{BACKPACK_RULES}
-"""
+{
+  "name": "<catchy Roblox marketplace name for the item SHOWN, max 50 chars>",
+  "description": "<one emoji that matches the item, then a short phrase (about 8-14 words) describing the item SHOWN. Do NOT include any link or URL.>"
+}"""
 
 
-async def describe_image(image_b64: str) -> dict:
+def _finalize_description(desc: str) -> str:
+    """Normalize the model's description and guarantee the canonical store CTA.
+    Strips stray quotes/brackets, removes any link the model added on its own,
+    soft-caps the length at a word boundary, then appends the exact More: link."""
+    desc = desc.strip().strip('"').rstrip(">").strip()
+    low = desc.lower()
+    i = low.find("more:")
+    if i != -1:                       # drop any link/More the model tacked on
+        desc = desc[:i].rstrip()
+    if "http" in desc.lower():        # or a bare URL with no "More:" prefix
+        desc = desc[:desc.lower().find("http")].rstrip()
+    desc = desc.rstrip(" -·,.;:").strip()
+    if len(desc) > 160:               # keep it to a short phrase
+        desc = desc[:160].rsplit(" ", 1)[0].rstrip(" ,.;:-") + "…"
+    return f"{desc} {MORE_SUFFIX}".strip()
+
+
+async def describe_image(image_b64: str, vary: bool = False) -> dict:
     """Call the Ollama vision model with a base64 image, return {name, description}.
-    Raises RuntimeError on connection/parse failure."""
+    Raises RuntimeError on connection/parse failure.
+
+    vary=False (default, the first "suggest"): temperature 0 / greedy decoding —
+    the most reliable, image-grounded answer, deterministic.
+    vary=True ("re-suggest"): a higher temperature so repeated clicks produce
+    fresh alternative names instead of the identical result every time. Safe now
+    that the prompt has no concrete examples to parrot — variation is in wording,
+    not subject (very occasional drift on ambiguous items, which the user can
+    just re-roll or edit)."""
     payload = {
         "model": OLLAMA_VISION_MODEL,
         "messages": [
@@ -163,7 +190,7 @@ async def describe_image(image_b64: str) -> dict:
         "format": "json",
         "stream": False,
         "keep_alive": 0,  # unload vision model after response so VRAM frees for ComfyUI
-        "options": {"temperature": 0.6},
+        "options": {"temperature": 0.7 if vary else 0.0},
     }
     try:
         async with httpx.AsyncClient(timeout=180.0) as client:
@@ -183,7 +210,7 @@ async def describe_image(image_b64: str) -> dict:
             raise RuntimeError(f"missing/empty field in response: {key}")
     return {
         "name": parsed["name"].strip()[:80],
-        "description": parsed["description"].strip(),
+        "description": _finalize_description(parsed["description"]),
     }
 
 
