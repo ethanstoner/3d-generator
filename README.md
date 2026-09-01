@@ -1,8 +1,13 @@
-# 3d generator
+# 3d generator (Qorlyt)
 
-A small web app that turns a single image into a downloadable 3D model (GLB) in about 80 seconds, powered by a local ComfyUI + Hunyuan3D 2.1 pipeline running on my own GPU.
+A small web app that turns a single image into a downloadable 3D model (GLB) in about 90 seconds, powered by a local ComfyUI + Hunyuan3D 2.1 pipeline running on my own GPU. Deployed for friends as **Qorlyt**.
 
 Built so a couple of friends could drop in an image, watch real-time progress, and pull down a textured `.glb` they can open in Blender, Unity, or Roblox Studio.
+
+> **~90 seconds** is the median of the 60 generations recorded in this app's own
+> `history.json` (all at 4k triangles, on an RTX 4090): median 90.5s, mean 95.9s,
+> range 80–150s. Each figure is wall-clock time measured around the job by the
+> backend. Expect a different number on different hardware.
 
 ![main app](docs/screenshots/main-app.png)
 
@@ -14,7 +19,9 @@ Built so a couple of friends could drop in an image, watch real-time progress, a
 - **Triangle count presets** — pick mesh density (4k / 10k / 20k / 40k); the choice persists and shows as a badge in history
 - **Model stats** — every result shows triangle count, file size, and generation time
 - **Live GPU status** — the frontend pings the backend, which pings the GPU host; the dot in the header goes green when the rig is reachable, red when it's offline (powered down, network issue, ComfyUI restarting). The Generate button auto-disables when offline so users don't queue jobs that can't run.
-- **Async job queue** — multiple friends can submit at once. Jobs run one at a time on the GPU; everyone else sees their queue position and an ETA computed from a rolling ~80s per-job estimate.
+- **Bulk upload** — drop in up to 50 images at once; they queue and generate one after another, with a batch tray showing what is waiting, rendering and done. Selected results come down as a single zip. An unusable file is skipped and reported rather than failing the batch.
+- **Async job queue** — multiple friends can submit at once. Jobs run one at a time on the GPU; everyone else sees their queue position and an ETA computed from a ~90s per-job estimate. Queued work is mirrored to disk and replayed on startup, so a restart doesn't drop a batch left running.
+- **Item metadata** — name and description are editable and persist per item (AI naming is one source, not the only one); items can be flagged "uploaded to Roblox" so a shared group doesn't upload the same thing twice.
 - **Real-time progress** — the backend holds a persistent WebSocket to ComfyUI, mapping per-node progress events back to the user's job and pushing percentage + current stage to the browser (polled every 2s).
 - **Persistent history** — every generation is stored on disk; users can re-open any past result in the 3D viewer or download the zip later without re-running the workflow.
 - **Three preview tabs** — textured model, untextured mesh, and the standalone texture map, all rendered in-browser with Google's `<model-viewer>` web component.
@@ -50,8 +57,12 @@ backend/
   main.py              # FastAPI app, queue worker, all endpoints
   comfyui.py           # ComfyUI client: upload, submit, listen, download
   llm.py               # Ollama client, rules loader, research-prompt builder
+  rules/
+    backpack_rules.md  # prompt-authoring rules injected into the LLM prompts
   workflows/
     image_to_3d.json   # Hunyuan3D workflow template
+tests/
+  test_smoke.py        # auth, validation, helpers, pending queue (no GPU needed)
 frontend/
   index.html
   app.js               # auth, upload, polling, history, model-viewer wiring
@@ -60,21 +71,73 @@ frontend/
     model-viewer.min.js  # self-hosted, version-pinned
 ```
 
+## What you need
+
+This repo is only the web app. The heavy lifting happens in a **separate ComfyUI
+install with the Hunyuan3D 2.1 nodes and model weights**, which you must set up
+yourself — none of it is vendored here, and the app is useless without it.
+
+**Hardware** — an NVIDIA GPU with a working CUDA build of PyTorch. Developed and
+measured on a 24GB RTX 4090. The textured pipeline (multi-view generation, baking,
+inpainting) is the VRAM-hungry part; the backend holds a single `gpu_lock` so 3D
+jobs and Ollama calls can never run concurrently on the same card. CPU-only will
+not work.
+
+**ComfyUI** with custom nodes providing these classes — the workflow in
+`backend/workflows/image_to_3d.json` fails to load without every one of them:
+
+| Node classes | Provided by |
+| --- | --- |
+| `Hy3DMeshGenerator`, `Hy3DMultiViewsGenerator`, `Hy3DBakeMultiViews`, `Hy3DInPaint`, `Hy3D21VAELoader`, `Hy3D21VAEDecode`, `Hy3D21CameraConfig`, `Hy3D21MeshUVWrap`, `Hy3D21PostprocessMesh`, `Hy3D21ExportMesh`, `Hy3D21LoadImageWithTransparency` | a ComfyUI Hunyuan3D 2.1 wrapper node pack |
+| `Image Remove Background (rembg)` | a rembg background-removal node pack |
+
+**Model weights** (Hunyuan3D 2.1, downloaded into your ComfyUI install, not here):
+
+- `hunyuan3d-dit-v2-1.ckpt`
+- `hunyuan3d-vae-v2-1.ckpt`
+
+**Ollama** (optional) — only the prompt helper and AI item naming need it. Pull
+`llama3.2:3b` and `llama3.2-vision:11b`. Everything else works without it.
+
 ## Run it locally
 
 ```bash
 python -m venv venv
+# Linux/macOS: venv/bin/pip     Windows: venv\Scripts\pip
 venv/bin/pip install -r backend/requirements.txt
 
-# .env at project root:
-#   SITE_PASSWORD=your-password
-#   SECRET_KEY=something-random
-#   COMFYUI_URL=http://your-comfyui-host:8188
-
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8090
+venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 8090
 ```
 
-Open `http://localhost:8090`. ComfyUI must be running with the Hunyuan3D 2.1 custom nodes installed.
+Open `http://localhost:8090`. On Windows, `start_all.bat` brings up Ollama,
+ComfyUI and the backend together (set `COMFYUI_BAT` to your ComfyUI launcher
+first); `stop_all.bat` tears them down.
+
+### Configuration
+
+`.env` at the project root (gitignored):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SITE_PASSWORD` | `change-me` | Shared password for the gate. **Change it.** |
+| `SECRET_KEY` | `change-me` | Signs the session cookie. **Change it.** |
+| `COMFYUI_URL` | `http://127.0.0.1:8188` | Where ComfyUI is reachable |
+| `COMFYUI_OUTPUT_DIR` | unset | ComfyUI's output dir, if the app can see it on disk. When unset the exported GLB is fetched over HTTP instead |
+| `OLLAMA_URL` | `http://127.0.0.1:11435` | Ollama endpoint (note: not the default 11434) |
+| `OLLAMA_MODEL` | `llama3.2:3b` | Prompt-helper model |
+| `OLLAMA_VISION_MODEL` | `llama3.2-vision:11b` | Item-naming vision model |
+
+## Tests
+
+```bash
+venv/bin/pip install -r backend/requirements-dev.txt
+venv/bin/python -m pytest tests/
+```
+
+35 tests covering auth and cookie flags, upload validation, the filename and
+description helpers, and the pending-queue round trip. They stub nothing out but
+need no GPU, no ComfyUI and no Ollama, so they run on a clean clone in a few
+seconds. The GPU pipeline itself is not covered by automated tests.
 
 ## API
 
@@ -88,16 +151,22 @@ Open `http://localhost:8090`. ComfyUI must be running with the Hunyuan3D 2.1 cus
 | `POST` | `/api/jobs/{id}/name` | Name + describe an item from its input image (Ollama vision) |
 | `GET` | `/api/research-prompt` | Static research-prompt preset to paste into an LLM |
 | `POST` | `/api/generate` | Submit image + triangle count, returns `job_id` |
+| `POST` | `/api/generate-batch` | Queue up to 50 images at once; unusable files are skipped and reported |
+| `GET` | `/api/queue` | Poll a whole batch in one request |
 | `GET` | `/api/jobs/{id}` | Poll status, progress, stage, queue position, model stats |
 | `GET` | `/api/jobs/{id}/files/{name}` | Serve `textured.glb` / `untextured.glb` / `texture.png` |
-| `GET` | `/api/jobs/{id}/download` | Zip of all outputs |
+| `GET` | `/api/jobs/{id}/thumb` | Input-image thumbnail for history rows |
+| `POST` | `/api/jobs/{id}/meta` | Save a user-edited name / description |
+| `POST` | `/api/jobs/{id}/uploaded` | Toggle the shared "uploaded to Roblox" flag |
+| `GET` | `/api/jobs/{id}/download` | Zip of all outputs, named after the item |
+| `POST` | `/api/download-multi` | One zip for many items, a folder per item |
 | `GET` | `/api/history` | List past generations |
 | `DELETE` | `/api/history/{id}` | Delete a past generation |
 
 ## Notes
 
-- The queue is in-memory; jobs persist on disk but a restart clears in-flight state. Fine for a few friends, would swap to Redis/SQLite for anything bigger.
+- The live queue is in-memory, but queued work is mirrored to `jobs/pending.json` and replayed in order on startup, so a restart no longer drops a batch that was left to run. A job's pending record is only cleared once it reaches a terminal state, so one interrupted mid-generation is re-queued and re-run from the start rather than lost — its partial progress is discarded. Fine for a few friends, would swap to Redis/SQLite for anything bigger.
 - GLB files for the untextured mesh are written directly to ComfyUI's output folder (not the history API), so the backend snapshots the directory before submission and diffs after to find the new file — with an HTTP fallback when the filesystem isn't reachable.
 - App `.html`/`.js`/`.css` responses send `Cache-Control: no-cache` so users behind the Cloudflare tunnel pick up frontend updates immediately; version-pinned vendor libs (`/vendor/`) and immutable per-job files are cached hard instead.
-- The Linux backend reaches the GPU host by **hostname**, not a DHCP-assigned IP — see `CLAUDE.md` → Deployment for why.
+- The backend reaches the GPU host by **hostname**, not a DHCP-assigned IP: the GPU box's lease can change and silently break the deployment, while the router's DNS keeps the hostname pointing at the right machine.
 - See [`CHANGELOG.md`](CHANGELOG.md) for the release history.
