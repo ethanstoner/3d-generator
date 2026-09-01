@@ -176,6 +176,51 @@ def test_pending_queue_round_trip(client):
     main.save_pending([])
 
 
+def test_interrupted_job_is_requeued_on_restart(client, tmp_path):
+    """A job that was mid-generation when the server died keeps its pending
+    record (it's only cleared on a terminal state), so startup re-enqueues it."""
+    import asyncio
+
+    img = tmp_path / "input.png"
+    img.write_bytes(b"fake")
+    main.save_pending([{"job_id": "restartme", "batch_id": None,
+                        "filename": "input.png", "input_path": str(img),
+                        "triangles": 4000}])
+
+    async def run():
+        main.job_queue = asyncio.Queue()  # fresh queue bound to this loop
+        await main._restore_pending_jobs(main.load_pending())
+        return main.job_queue.get_nowait()
+
+    try:
+        queued = asyncio.run(run())
+        assert queued[0] == "restartme"
+        assert main.jobs["restartme"]["status"] == "queued"
+        assert [r["job_id"] for r in main.load_pending()] == ["restartme"]
+    finally:
+        main.jobs.pop("restartme", None)
+        if "restartme" in main.queue_order:
+            main.queue_order.remove("restartme")
+        main.save_pending([])
+
+
+def test_pending_record_with_missing_input_is_dropped(client, tmp_path):
+    """If the staged image is gone there is nothing to re-run, so the record
+    must not linger in pending.json forever."""
+    import asyncio
+
+    main.save_pending([{"job_id": "ghost", "input_path": str(tmp_path / "gone.png"),
+                        "triangles": 4000}])
+
+    async def run():
+        main.job_queue = asyncio.Queue()
+        await main._restore_pending_jobs(main.load_pending())
+
+    asyncio.run(run())
+    assert main.load_pending() == []
+    assert "ghost" not in main.jobs
+
+
 def test_backpack_rules_load_without_claude_md():
     """The rules must ship with the repo - llm.py used to read CLAUDE.md, which
     is untracked, so every fresh clone failed at import."""
