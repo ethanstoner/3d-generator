@@ -7,23 +7,16 @@ import httpx
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11435")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 OLLAMA_VISION_MODEL = os.getenv("OLLAMA_VISION_MODEL", "llama3.2-vision:11b")
-RULES_FILE = Path(__file__).parent.parent / "CLAUDE.md"
+RULES_FILE = Path(__file__).parent / "rules" / "backpack_rules.md"
 
 
 def _load_rules() -> str:
-    """Extract the '## Backpack Generation Rules' section from CLAUDE.md.
-    Returns the section body (without the heading). Raises if absent."""
+    """Load the backpack generation rules that get injected into the prompt-help
+    system prompt and the research preset. Returns the body without the title."""
     if not RULES_FILE.exists():
-        raise RuntimeError(f"CLAUDE.md not found at {RULES_FILE}")
+        raise RuntimeError(f"rules file not found at {RULES_FILE}")
     text = RULES_FILE.read_text(encoding="utf-8")
-    m = re.search(
-        r"^##\s+Backpack Generation Rules\s*\n(.*?)(?=^##\s|\Z)",
-        text,
-        re.MULTILINE | re.DOTALL,
-    )
-    if not m:
-        raise RuntimeError("'## Backpack Generation Rules' section missing in CLAUDE.md")
-    return m.group(1).strip()
+    return re.sub(r"\A#\s+.*\n", "", text).strip()
 
 
 BACKPACK_RULES = _load_rules()
