@@ -1,7 +1,7 @@
-fastapi
-uvicorn[standard]
-python-dotenv
-httpx
-websockets
-itsdangerous
-python-multipart
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-dotenv==1.2.3
+httpx==0.28.1
+websockets==17.1
+itsdangerous==2.2.0
+python-multipart==0.0.32
