@@ -4,8 +4,11 @@
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
-$OLLAMA_EXE   = "%USERPROFILE%\AppData\Local\Programs\Ollama\ollama.exe"
-$COMFYUI_BAT  = "D:\Cursor\AI\ComfyUI_windows_portable_nvidia\ComfyUI_windows_portable\START_COMFYUI_NETWORK.bat"
+# Machine-specific paths. Override with env vars (or a .env entry) rather than
+# editing this file: OLLAMA_EXE and COMFYUI_BAT.
+$OLLAMA_EXE   = if ($env:OLLAMA_EXE) { $env:OLLAMA_EXE }
+                else { Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe" }
+$COMFYUI_BAT  = $env:COMFYUI_BAT
 $BACKEND_PORT = 8080
 $OLLAMA_URL   = "http://127.0.0.1:11435"
 $COMFYUI_URL  = "http://127.0.0.1:8188"
@@ -69,6 +72,9 @@ try {
     if (Probe-Url "$COMFYUI_URL/system_stats" 2) {
         Write-Host "  already running at $COMFYUI_URL"
     } else {
+        if (-not $COMFYUI_BAT) {
+            throw "set COMFYUI_BAT to your ComfyUI launcher .bat (e.g. ...\ComfyUI_windows_portable\START_COMFYUI_NETWORK.bat), or start ComfyUI yourself first"
+        }
         if (-not (Test-Path $COMFYUI_BAT)) { throw "ComfyUI launcher not found at $COMFYUI_BAT" }
         Write-Host "  starting (opens its own window - close that window to stop ComfyUI)..."
         $p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "`"$COMFYUI_BAT`"" -PassThru
