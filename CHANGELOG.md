@@ -4,6 +4,45 @@ All notable changes to this project. Dates are when the change went live on
 **https://qorlyt.com/**. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## 2026-08-22
+
+### Added
+- **Bulk upload** — queue up to 50 images in one go (`POST /api/generate-batch`)
+  and poll the whole batch with a single `GET /api/queue`. A batch tray shows
+  what is waiting, rendering and done, with filters, a grid/list toggle and a
+  collapse state that persists across reloads. Selected results download as one
+  zip (`POST /api/download-multi`), a folder per item.
+- **Restart-surviving queue** — queued work is mirrored to `jobs/pending.json`
+  and replayed in order on startup. Uploads are staged to disk at enqueue time,
+  so the queue carries a path instead of pinning every queued image in RAM.
+- **Editable item metadata** — name and description are now text fields that
+  persist (`POST /api/jobs/{id}/meta`); AI naming fills them in rather than
+  being the only source. Single-item zips are named after the item.
+- **Uploaded-to-Roblox flag** — a shared marker (`POST /api/jobs/{id}/uploaded`)
+  so the group doesn't upload the same item twice.
+- **History thumbnails** — `GET /api/jobs/{id}/thumb` serves the input image;
+  the baked UV atlas was unreadable at 48px.
+- **How-to guide** listing the required Roblox Studio plugins.
+- **Smoke tests** (`tests/test_smoke.py`) covering auth, upload validation, the
+  filename/description helpers and the pending-queue round trip. No GPU needed.
+
+### Fixed
+- **A fresh clone could not start at all.** `backend/llm.py` read its prompt
+  rules out of `CLAUDE.md`, which is deliberately untracked, and raised at
+  import time when it was missing. The rules now ship in
+  `backend/rules/backpack_rules.md`.
+- **Session cookie is now `Secure`** when the request arrives over HTTPS, taken
+  from `X-Forwarded-Proto` since Cloudflare terminates TLS upstream.
+- **Vision model described the prompt, not the image.** Concrete example
+  subjects in the system prompt were being parroted, so unrelated items came
+  back named after them. Examples removed; the store link is appended in code.
+- **Queue ETA was 12% short** — it assumed 80s per job where the measured median
+  across 60 runs is 90.5s.
+- Deleting from history now also drops the in-memory job, which otherwise kept
+  reporting a completed status for files that no longer existed.
+- The launcher no longer hardcodes one machine's Ollama and ComfyUI paths.
+- Backend dependencies are pinned.
+
 ## 2026-05-15
 
 ### Added
@@ -42,7 +81,7 @@ All notable changes to this project. Dates are when the change went live on
 - **Live site "gpu offline" while local worked.** The Linux backend hardcoded
   the Windows GPU box's DHCP-assigned LAN IP, which silently broke on a lease
   change. Now addressed by stable hostname so DHCP changes no longer
-  take the site down. See CLAUDE.md → Deployment.
+  take the site down.
 - Spacing of the model stats line so it no longer crowds the download button.
 
 ## 2026-05-14
