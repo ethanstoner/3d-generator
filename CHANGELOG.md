@@ -80,7 +80,7 @@ All notable changes to this project. Dates are when the change went live on
   folders are kept and logged, never auto-destroyed).
 - **Live site "gpu offline" while local worked.** The Linux backend hardcoded
   the Windows GPU box's DHCP-assigned LAN IP, which silently broke on a lease
-  change. Now addressed by stable hostname so DHCP changes no longer
+  change. Now addressed by a stable hostname so DHCP changes no longer
   take the site down.
 - Spacing of the model stats line so it no longer crowds the download button.
 

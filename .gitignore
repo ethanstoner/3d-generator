@@ -8,3 +8,10 @@ docs/superpowers/
 .launcher-logs/
 CLAUDE.md
 .venv/
+
+# Generated meshes and model weights must never land in the repo.
+# Job output already lives under jobs/; these catch strays.
+*.glb
+*.obj
+*.ckpt
+*.safetensors
