@@ -1,14 +1,13 @@
 # 3d generator (Qorlyt)
 
-A small web app that turns a single image into a downloadable 3D model (GLB) in under two minutes, powered by a local ComfyUI + Hunyuan3D 2.1 pipeline running on my own GPU. Deployed for friends as **Qorlyt**.
+A small web app that turns a single image into a downloadable 3D model (GLB) in about 90 seconds, powered by a local ComfyUI + Hunyuan3D 2.1 pipeline running on my own GPU. Deployed for friends as **Qorlyt**.
 
 Built so a couple of friends could drop in an image, watch real-time progress, and pull down a textured `.glb` they can open in Blender, Unity, or Roblox Studio.
 
-> **~107 seconds** is the median of the 102 generations recorded in this app's own
-> `history.json` (all at 4k triangles, on an RTX 4090): median 106.5s, mean 155.6s,
-> range 80–712s. A few long jobs pull the mean up; the first 60 had a median of
-> 90.5s. Each figure is wall-clock time measured around the job by the backend.
-> Expect a different number on different hardware.
+> **~90 seconds** is the median of the 64 Hunyuan3D 2.1 generations recorded in this
+> app's own `history.json` (all at 4k triangles, on an RTX 4090): median 91s, mean
+> 95.9s, range 80–150s. Each figure is wall-clock time measured around the job by
+> the backend. Expect a different number on different hardware.
 
 ![main app](docs/screenshots/main-app.png)
 
